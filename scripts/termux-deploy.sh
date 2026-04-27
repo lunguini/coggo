@@ -232,9 +232,14 @@ cat <<EOF
 Next steps (do these once, in order):
 
 1. Authenticate Tailscale (interactive, one-time):
-     tailscaled --tun=userspace-networking --state=\$HOME/.coggo/tailscaled.state &
-     tailscale --socket=\$HOME/.coggo/run/tailscaled.sock up
-   Follow the URL it prints, log in, then 'kill %1' when done.
+     mkdir -p \$HOME/.coggo/run
+     tailscaled --tun=userspace-networking \\
+       --state=\$HOME/.coggo/tailscaled.state \\
+       --socket=\$HOME/.coggo/run/tailscaled.sock &
+     tailscale --socket=\$HOME/.coggo/run/tailscaled.sock up --ssh
+   The --ssh flag enables Tailscale SSH so you can drive updates
+   from your laptop (no keys, no port 22). Follow the URL it prints,
+   log in, then 'kill %1' when done.
 
 2. Mint a Coggo bearer token:
      coggo token create --all --label termux-gateway
