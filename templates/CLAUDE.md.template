@@ -1,0 +1,141 @@
+<!--
+  CLAUDE.md template for repos that want Claude Code to use Coggo.
+
+  How to use:
+    1. Copy this file to CLAUDE.md at the root of your repo (or merge the
+       Coggo section into an existing CLAUDE.md).
+    2. Replace <PROJECT_NAME> below with the project's name as it appears
+       in Coggo (the same string as the Project entity's `title` field).
+    3. If this repo belongs to a peer other than "business", change the
+       peer name in every coggo_* invocation below.
+    4. Confirm Coggo is wired into Claude Code's MCP config — see
+       docs/claude-code-setup.md in the Coggo repository.
+-->
+
+# CLAUDE.md
+
+[Your project's existing CLAUDE.md content goes here. Keep this section
+above the Coggo integration so Claude Code reads project-specific context
+first.]
+
+## Coggo integration
+
+This project's durable context lives in Coggo under peer `business` as a
+Project entity titled `<PROJECT_NAME>`. Treat Coggo as the source of
+truth for project state, open decisions, and goals. Conversational memory
+is for the current session only.
+
+### Peer routing
+
+Coggo separates content across peers; getting this wrong puts data in the
+wrong sovereignty boundary. For this repo:
+
+- **`business`** — everything about *this product*: codebase decisions,
+  architecture, dependency picks, version roadmap, scope cuts, observed
+  bugs, the `<PROJECT_NAME>` Project entity itself. Default for work in
+  this repo.
+- **`personal`** — life domains unrelated to the product (health, music,
+  finances, social). Don't write here from this repo unless the user
+  explicitly says so.
+- **`coggo`** — Coggo's own *identity* as a synthetic intelligence:
+  directives, behavioral preferences, capture confirmation policy,
+  personality. **Not** the Coggo codebase. A decision like "Coggo should
+  default to terse responses" → `coggo`; a decision like "use SQLite for
+  storage" → `business` (engineering about the substrate).
+
+Quick test: would this still apply to a different Coggo running the same
+binary? If yes (substrate-level), `business`. If no (specific to *this*
+Coggo's identity), `coggo`. When unclear, ask the user once rather than
+guessing.
+
+### At session start
+
+Before doing significant work, fetch the current project state:
+
+```
+coggo_entity_query(
+  peer="business",
+  type="Project",
+  filters={"title": "<PROJECT_NAME>"}
+)
+```
+
+Then check for related decisions and goals:
+
+```
+coggo_relation_query(peer="business", from=<project_id>)
+coggo_entity_query(peer="business", type="Decision", limit=10)
+coggo_entity_query(peer="business", type="Goal", filters={"status": "open"})
+```
+
+Use what comes back to ground your understanding of where the project is.
+If the project entity does not exist yet, create it with
+`coggo_entity_create`.
+
+### During the session
+
+When a substantive decision is made (architectural choice, library
+selection, scope cut, deferred concern), log it immediately:
+
+```
+coggo_entity_create(
+  peer="business",
+  type="Decision",
+  fields={
+    "title": "...",
+    "rationale": "...",
+    "alternatives": ["...", "..."],
+    "context": "Made during work on <PROJECT_NAME>",
+    "confidence": "high|medium|low"
+  }
+)
+```
+
+If the new decision supersedes a previous one, add a `supersedes`
+relation rather than editing the older decision:
+
+```
+coggo_relation_create(
+  peer="business",
+  from=<new_decision_id>,
+  to=<old_decision_id>,
+  type="supersedes",
+  data={"reason": "..."}
+)
+```
+
+When an observation worth remembering surfaces (a discovered constraint,
+a useful pattern, a non-obvious failure mode), log it:
+
+```
+coggo_entity_create(
+  peer="business",
+  type="Observation",
+  fields={
+    "text": "...",
+    "tags": ["<PROJECT_NAME>", "..."],
+    "source": "Claude Code session"
+  }
+)
+```
+
+### When tasks complete
+
+When the project's state materially changes (status, completion estimate,
+description), update the Project entity:
+
+```
+coggo_entity_update(
+  peer="business",
+  id=<project_id>,
+  fields={"status": "...", "completion_estimate": <number>}
+)
+```
+
+### Discovering the schema
+
+If you need to capture something that doesn't fit Project, Decision,
+Goal, or Observation, call `coggo_type_list(peer="business")` to see
+what's defined and `coggo_type_describe(peer="business", type_name="...")`
+for fields. Use `coggo_type_define` to add a new type only with the
+user's confirmation.

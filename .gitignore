@@ -1,0 +1,21 @@
+.DS_Store
+/coggo
+/coggo-oauth-gateway
+/dist/
+*.test
+*.out
+*.log
+# secrets — never commit
+.env
+.env.*
+.idea/
+.vscode/
+# local data
+*.db
+*.db-shm
+*.db-wal
+# personal working notes (drafts, scratch, upstream issue drafts before filing)
+/notes/
+# private documentation — design specs, plans, internal setup guides.
+# Kept out of the public repo until we decide what to publish.
+/.ai/
