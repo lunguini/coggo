@@ -1,0 +1,16 @@
+# Litestream — continuous SQLite replication to Cloudflare R2.
+#
+# All values come from the repo-root .env file (see docs/backup.md).
+# If R2_ACCESS_KEY_ID is unset, the boot launcher skips litestream
+# entirely so unconfigured deployments still come up cleanly.
+
+dbs:
+  - path: ${COGGO_DB_PATH}
+    replicas:
+      - type: s3
+        endpoint: https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com
+        bucket: ${R2_BUCKET}
+        path: coggo
+        region: auto
+        access-key-id: ${R2_ACCESS_KEY_ID}
+        secret-access-key: ${R2_SECRET_ACCESS_KEY}

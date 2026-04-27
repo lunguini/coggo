@@ -67,6 +67,15 @@ echo "==> installing to \$PREFIX/bin..."
 install -m 0755 ./coggo                "$PREFIX/bin/coggo"
 install -m 0755 ./coggo-oauth-gateway  "$PREFIX/bin/coggo-oauth-gateway"
 
+# Litestream — continuous DB replication to Cloudflare R2. Termux's pkg
+# repo doesn't ship it, so we go install. Idempotent: re-running upgrades
+# in place. Skipped if it's already on PATH and current.
+if ! command -v litestream >/dev/null 2>&1; then
+    echo
+    echo "==> installing litestream (one-time, ~30s)..."
+    GOBIN="$PREFIX/bin" go install github.com/benbjohnson/litestream/cmd/litestream@latest
+fi
+
 # --- 4. config + env template -----------------------------------------------
 
 mkdir -p "$HOME/.coggo"
@@ -115,6 +124,17 @@ OAUTH_ALLOWED_EMAILS=
 # RATE_GLOBAL_BURST=100
 # RATE_PER_EMAIL_RPM=10      # per authenticated email on /mcp
 # RATE_PER_EMAIL_BURST=30
+
+# Litestream — continuous DB replication to Cloudflare R2.
+# Free tier: 10 GB storage, unlimited egress. See docs/backup.md for
+# the R2 setup walkthrough. All four R2_* values must be filled in to
+# enable replication; if any are blank the boot launcher skips litestream
+# cleanly (coggo + gateway still run).
+COGGO_DB_PATH=$HOME/.local/share/coggo/coggo.db
+R2_ACCOUNT_ID=
+R2_BUCKET=coggo-replica
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
 EOF
     chmod 600 "$ENV_FILE"
 else
@@ -204,6 +224,15 @@ set -a
 set +a
 
 start_if_down coggo "$PREFIX/bin/coggo" serve
+
+# Litestream — only if all four R2_* values are set in .env.
+if [ -n "${R2_ACCESS_KEY_ID:-}" ] && [ -n "${R2_SECRET_ACCESS_KEY:-}" ] \
+   && [ -n "${R2_ACCOUNT_ID:-}" ] && [ -n "${R2_BUCKET:-}" ]; then
+    start_if_down litestream "$PREFIX/bin/litestream" replicate \
+        -config "$HOME_DIR/coggo/scripts/litestream.yml"
+else
+    log "litestream skipped — R2_* vars not all set in .env (coggo will run without replication)"
+fi
 
 # Wait for coggo's MCP port before launching the gateway.
 COGGO_PORT="${COGGO_PORT:-6177}"
