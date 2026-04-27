@@ -51,13 +51,12 @@ You should see `replication started` and periodic `wrote snapshot` / `wrote wal 
 From any machine with `litestream` installed and the same R2 credentials:
 
 ```bash
-export R2_ACCOUNT_ID=...
-export R2_ACCESS_KEY_ID=...
-export R2_SECRET_ACCESS_KEY=...
+cd /path/to/coggo
+source .env       # variables are declared with `export`, so this is enough
 
 litestream restore \
   -o /tmp/coggo-restored.db \
-  -config /path/to/coggo/scripts/litestream.yml
+  -config scripts/litestream.yml
 ```
 
 This pulls the latest snapshot + replays WAL frames to reconstruct the DB at the most recent state Litestream had time to ship. Point-in-time recovery (`-timestamp`) is also supported — useful if you need to roll back to before a bad write.

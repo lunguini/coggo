@@ -15,13 +15,12 @@ COGGO_BIN="${COGGO_BIN:-./coggo}"
 GATEWAY_BIN="${GATEWAY_BIN:-./coggo-oauth-gateway}"
 
 # Auto-load .env from the repo root if present — same convention as Termux.
+# Variables in .env use `export` so plain sourcing is enough.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 if [ -f "$REPO_ROOT/.env" ]; then
-    set -a
     # shellcheck disable=SC1091
     . "$REPO_ROOT/.env"
-    set +a
 fi
 
 # Required env

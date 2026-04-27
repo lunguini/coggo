@@ -81,61 +81,17 @@ fi
 mkdir -p "$HOME/.coggo"
 # .env lives at the repo root — same convention as the laptop. Gitignored,
 # chmod 600. termux-update.sh and `make serve-public` both read from here.
+# Single source of truth for the template: the committed .env.example.
 ENV_FILE="$REPO_ROOT/.env"
+ENV_EXAMPLE="$REPO_ROOT/.env.example"
 if [ ! -f "$ENV_FILE" ]; then
+    if [ ! -f "$ENV_EXAMPLE" ]; then
+        echo "missing $ENV_EXAMPLE — repo is incomplete" >&2
+        exit 1
+    fi
     echo
-    echo "==> writing env template at $ENV_FILE"
-    cat > "$ENV_FILE" <<'EOF'
-# Coggo runtime environment — laptop and phone alike.
-#
-# This file is gitignored. Fill values in, save, then run the boot launcher
-# (or reboot the phone if Termux:Boot is installed). Lines starting with # are
-# ignored.
-#
-# Required:
-
-# Bearer token coggo trusts. Mint with:
-#   coggo token create --all --label termux-gateway
-COGGO_TOKEN=
-
-# Google OAuth client (Web application) from console.cloud.google.com.
-# Authorized redirect URI must be: $GATEWAY_PUBLIC_URL/oauth/callback
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-
-# Public URL the gateway is reachable at. With Tailscale Funnel this is
-# your phone's tailnet hostname, e.g. https://pixel-8.tail3b1f7.ts.net
-GATEWAY_PUBLIC_URL=
-
-# FAIL-CLOSED EMAIL ALLOWLIST. Comma-separated Google account emails
-# permitted to call /mcp. If empty, EVERY request is rejected — so set this
-# before exposing the gateway. Example:
-#   OAUTH_ALLOWED_EMAILS=you@gmail.com,partner@example.com
-OAUTH_ALLOWED_EMAILS=
-
-# Optional:
-# OAUTH_ALLOWED_CLIENT_DOMAINS=claude.ai,claude.com,chatgpt.com,openai.com
-# COGGO_LOG_LEVEL=info
-# GATEWAY_LISTEN=:8080
-# COGGO_UPSTREAM=http://localhost:6177
-
-# Rate limits (defaults shown — tune if you see 429s in normal use):
-# RATE_GLOBAL_RPS=50         # global token-bucket across all endpoints
-# RATE_GLOBAL_BURST=100
-# RATE_PER_EMAIL_RPM=10      # per authenticated email on /mcp
-# RATE_PER_EMAIL_BURST=30
-
-# Litestream — continuous DB replication to Cloudflare R2.
-# Free tier: 10 GB storage, unlimited egress. See docs/backup.md for
-# the R2 setup walkthrough. All four R2_* values must be filled in to
-# enable replication; if any are blank the boot launcher skips litestream
-# cleanly (coggo + gateway still run).
-COGGO_DB_PATH=$HOME/.local/share/coggo/coggo.db
-R2_ACCOUNT_ID=
-R2_BUCKET=coggo-replica
-R2_ACCESS_KEY_ID=
-R2_SECRET_ACCESS_KEY=
-EOF
+    echo "==> seeding $ENV_FILE from .env.example"
+    cp "$ENV_EXAMPLE" "$ENV_FILE"
     chmod 600 "$ENV_FILE"
 else
     echo "==> env file already exists at $ENV_FILE (leaving it alone)"
@@ -213,15 +169,14 @@ for _ in $(seq 1 15); do
     sleep 1
 done
 
-# 2. Coggo + gateway. Source env file so $COGGO_TOKEN etc are exported.
+# 2. Coggo + gateway. Sourcing .env is enough — every variable in it is
+#    declared with `export`, so children inherit them without `set -a`.
 if [ ! -f "$ENV_FILE" ]; then
     log "missing $ENV_FILE — refusing to start gateway"
     exit 1
 fi
-set -a
 # shellcheck disable=SC1090
 . "$ENV_FILE"
-set +a
 
 start_if_down coggo "$PREFIX/bin/coggo" serve
 

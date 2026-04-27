@@ -8,6 +8,8 @@
 # secrets — never commit
 .env
 .env.*
+# ...except the committed example template
+!.env.example
 .idea/
 .vscode/
 # local data
