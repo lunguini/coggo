@@ -14,6 +14,16 @@ GATEWAY_PORT="${2:-8080}"
 COGGO_BIN="${COGGO_BIN:-./coggo}"
 GATEWAY_BIN="${GATEWAY_BIN:-./coggo-oauth-gateway}"
 
+# Auto-load .env from the repo root if present — same convention as Termux.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+if [ -f "$REPO_ROOT/.env" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    . "$REPO_ROOT/.env"
+    set +a
+fi
+
 # Required env
 required="COGGO_TOKEN GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET"
 missing=""

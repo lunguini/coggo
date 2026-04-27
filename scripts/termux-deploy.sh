@@ -7,7 +7,9 @@
 #      termux-services, termux-api, openssh).
 #   3. Builds ./coggo (CGO, sqlite needs clang) and ./coggo-oauth-gateway.
 #   4. Installs both binaries to $PREFIX/bin.
-#   5. Drops an env-file template at ~/.coggo/gateway.env you must fill in.
+#   5. Drops an env-file template at <repo>/.env you must fill in. Same
+#      filename and shape as the laptop's repo-root .env, so secrets follow
+#      one convention across machines.
 #   6. Installs a Termux:Boot launcher at ~/.termux/boot/30-coggo so the
 #      whole stack comes back up after reboot.
 #   7. Prints next steps (tailscale up, fill env, reboot).
@@ -68,15 +70,18 @@ install -m 0755 ./coggo-oauth-gateway  "$PREFIX/bin/coggo-oauth-gateway"
 # --- 4. config + env template -----------------------------------------------
 
 mkdir -p "$HOME/.coggo"
-ENV_FILE="$HOME/.coggo/gateway.env"
+# .env lives at the repo root — same convention as the laptop. Gitignored,
+# chmod 600. termux-update.sh and `make serve-public` both read from here.
+ENV_FILE="$REPO_ROOT/.env"
 if [ ! -f "$ENV_FILE" ]; then
     echo
     echo "==> writing env template at $ENV_FILE"
     cat > "$ENV_FILE" <<'EOF'
-# Coggo OAuth gateway environment.
+# Coggo runtime environment — laptop and phone alike.
 #
-# Fill these in, then run the boot launcher (or reboot the phone if Termux:Boot
-# is installed). Lines starting with # are ignored.
+# This file is gitignored. Fill values in, save, then run the boot launcher
+# (or reboot the phone if Termux:Boot is installed). Lines starting with # are
+# ignored.
 #
 # Required:
 
@@ -142,7 +147,8 @@ PREFIX="/data/data/com.termux/files/usr"
 HOME_DIR="/data/data/com.termux/files/home"
 LOG_DIR="$HOME_DIR/.coggo/logs"
 RUN_DIR="$HOME_DIR/.coggo/run"
-ENV_FILE="$HOME_DIR/.coggo/gateway.env"
+# .env at the repo root — same convention the laptop uses.
+ENV_FILE="$HOME_DIR/coggo/.env"
 
 mkdir -p "$LOG_DIR" "$RUN_DIR"
 
