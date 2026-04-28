@@ -127,6 +127,7 @@ Drop [templates/CLAUDE.md.template](templates/CLAUDE.md.template) into your repo
 - [claude-ai-setup.md](docs/claude-ai-setup.md) — wiring claude.ai web and mobile
 - [claude-code-setup.md](docs/claude-code-setup.md) — wiring Claude Code
 - [tailscale-setup.md](docs/tailscale-setup.md) — Tailscale + Funnel for remote MCP access
+- [cloudflare-tunnel.md](docs/cloudflare-tunnel.md) — exposing Coggo on a custom domain via Cloudflare Tunnel
 - [backup.md](docs/backup.md) — continuous DB replication to Cloudflare R2 via Litestream
 - [skills/coggo/SKILL.md](skills/coggo/SKILL.md) — the Coggo skill for AI clients
 - [templates/CLAUDE.md.template](templates/CLAUDE.md.template) — drop-in CLAUDE.md for Claude Code repos

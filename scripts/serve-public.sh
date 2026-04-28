@@ -41,7 +41,18 @@ if [ -n "$missing" ]; then
     exit 1
 fi
 
-if ! command -v tailscale >/dev/null 2>&1; then
+USE_CLOUDFLARED=0
+if [ -n "${CLOUDFLARE_TUNNEL_NAME:-}" ]; then
+    USE_CLOUDFLARED=1
+    if ! command -v cloudflared >/dev/null 2>&1; then
+        echo "CLOUDFLARE_TUNNEL_NAME set but cloudflared not installed" >&2
+        exit 1
+    fi
+    if [ -z "${GATEWAY_PUBLIC_URL:-}" ]; then
+        echo "CLOUDFLARE_TUNNEL_NAME set but GATEWAY_PUBLIC_URL is empty — set it to your tunnel's hostname" >&2
+        exit 1
+    fi
+elif ! command -v tailscale >/dev/null 2>&1; then
     echo "tailscale not found — install it (https://tailscale.com/download)" >&2
     exit 1
 fi
@@ -57,6 +68,8 @@ COGGO_LOG="$LOG_DIR/coggo.log"
 GATEWAY_LOG="$LOG_DIR/gateway.log"
 COGGO_PID=""
 GATEWAY_PID=""
+CLOUDFLARED_PID=""
+CLOUDFLARED_LOG="$LOG_DIR/cloudflared.log"
 
 cleanup() {
     trap - EXIT INT TERM
@@ -70,8 +83,15 @@ cleanup() {
         kill -TERM "$COGGO_PID" 2>/dev/null || true
         wait "$COGGO_PID" 2>/dev/null || true
     fi
-    echo "resetting funnel..."
-    tailscale funnel reset 2>/dev/null || true
+    if [ -n "$CLOUDFLARED_PID" ] && kill -0 "$CLOUDFLARED_PID" 2>/dev/null; then
+        echo "stopping cloudflared..."
+        kill -TERM "$CLOUDFLARED_PID" 2>/dev/null || true
+        wait "$CLOUDFLARED_PID" 2>/dev/null || true
+    fi
+    if [ "$USE_CLOUDFLARED" -eq 0 ]; then
+        echo "resetting funnel..."
+        tailscale funnel reset 2>/dev/null || true
+    fi
     echo "logs preserved at: $LOG_DIR"
 }
 trap cleanup EXIT INT TERM
@@ -118,20 +138,33 @@ if [ "$ready" -ne 1 ]; then
 fi
 echo "      coggo ready"
 
-# 2. Start funnel against the gateway port.
-echo "[2/3] starting Tailscale Funnel for gateway port $GATEWAY_PORT..."
-if ! tailscale funnel --bg "$GATEWAY_PORT"; then
-    echo "funnel failed — check 'tailscale status' and ACLs" >&2
-    exit 1
-fi
+# 2. Start the public exposure layer (Cloudflare Tunnel OR Tailscale Funnel).
+if [ "$USE_CLOUDFLARED" -eq 1 ]; then
+    echo "[2/3] starting cloudflared tunnel '$CLOUDFLARE_TUNNEL_NAME' (log: $CLOUDFLARED_LOG)..."
+    cloudflared tunnel run "$CLOUDFLARE_TUNNEL_NAME" >"$CLOUDFLARED_LOG" 2>&1 &
+    CLOUDFLARED_PID=$!
+    sleep 2
+    if ! kill -0 "$CLOUDFLARED_PID" 2>/dev/null; then
+        dump_log_on_death "cloudflared" "$CLOUDFLARED_LOG"
+        exit 1
+    fi
+    PUBLIC_URL="${GATEWAY_PUBLIC_URL%/}"
+    echo "      public URL: $PUBLIC_URL"
+else
+    echo "[2/3] starting Tailscale Funnel for gateway port $GATEWAY_PORT..."
+    if ! tailscale funnel --bg "$GATEWAY_PORT"; then
+        echo "funnel failed — check 'tailscale status' and ACLs" >&2
+        exit 1
+    fi
 
-PUBLIC_URL="$(tailscale funnel status 2>/dev/null | sed -n 's|^\(https://[^ ]*\).*|\1|p' | head -1 || true)"
-if [ -z "$PUBLIC_URL" ]; then
-    echo "could not auto-detect funnel URL; run 'tailscale funnel status' to see it" >&2
-    exit 1
+    PUBLIC_URL="$(tailscale funnel status 2>/dev/null | sed -n 's|^\(https://[^ ]*\).*|\1|p' | head -1 || true)"
+    if [ -z "$PUBLIC_URL" ]; then
+        echo "could not auto-detect funnel URL; run 'tailscale funnel status' to see it" >&2
+        exit 1
+    fi
+    PUBLIC_URL="${PUBLIC_URL%/}"
+    echo "      public URL: $PUBLIC_URL"
 fi
-PUBLIC_URL="${PUBLIC_URL%/}"
-echo "      public URL: $PUBLIC_URL"
 
 # 3. Start the gateway pointing at the public URL we just learned.
 echo "[3/3] starting coggo-oauth-gateway on :$GATEWAY_PORT (log: $GATEWAY_LOG)..."
@@ -156,7 +189,8 @@ echo
 echo "watching coggo + gateway. Ctrl-C to stop both and reset funnel."
 
 # Poll instead of `wait -n` (bash 3.2 compatible).
-while kill -0 "$COGGO_PID" 2>/dev/null && kill -0 "$GATEWAY_PID" 2>/dev/null; do
+while kill -0 "$COGGO_PID" 2>/dev/null && kill -0 "$GATEWAY_PID" 2>/dev/null \
+    && { [ -z "$CLOUDFLARED_PID" ] || kill -0 "$CLOUDFLARED_PID" 2>/dev/null; }; do
     sleep 1
 done
 
@@ -166,5 +200,8 @@ if ! kill -0 "$COGGO_PID" 2>/dev/null; then
 fi
 if ! kill -0 "$GATEWAY_PID" 2>/dev/null; then
     dump_log_on_death "coggo-oauth-gateway" "$GATEWAY_LOG"
+fi
+if [ -n "$CLOUDFLARED_PID" ] && ! kill -0 "$CLOUDFLARED_PID" 2>/dev/null; then
+    dump_log_on_death "cloudflared" "$CLOUDFLARED_LOG"
 fi
 exit 1

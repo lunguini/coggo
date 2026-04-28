@@ -55,6 +55,12 @@ pkg install -y \
     openssh \
     jq curl
 
+# cloudflared is optional — only needed if you exit via Cloudflare Tunnel
+# instead of Tailscale Funnel. Available in Termux's main repo. We don't
+# fail the deploy if it's missing; the boot launcher only invokes it when
+# CLOUDFLARE_TUNNEL_NAME is set in .env.
+pkg install -y cloudflared || echo "(cloudflared not installed — fine if you use Tailscale Funnel)"
+
 # --- 3. build ----------------------------------------------------------------
 
 echo
@@ -201,13 +207,26 @@ done
 
 start_if_down gateway "$PREFIX/bin/coggo-oauth-gateway"
 
-# 3. Funnel — exposes the gateway port publicly via your tailnet hostname.
+# 3. Public exposure. Two paths:
+#    - CLOUDFLARE_TUNNEL_NAME set → run cloudflared (custom domain).
+#    - otherwise                 → Tailscale Funnel (*.ts.net hostname).
 GATEWAY_PORT="${GATEWAY_PORT:-8080}"
-# Strip any leading colon so 'tailscale funnel' gets a bare port.
 GATEWAY_PORT="${GATEWAY_PORT#:}"
-log "enabling Tailscale Funnel on port $GATEWAY_PORT"
-$TAILSCALE funnel --bg "$GATEWAY_PORT" >> "$LOG_DIR/funnel.log" 2>&1 || \
-    log "funnel failed — run '$TAILSCALE up' interactively first?"
+
+if [ -n "${CLOUDFLARE_TUNNEL_NAME:-}" ]; then
+    if [ ! -x "$PREFIX/bin/cloudflared" ]; then
+        log "CLOUDFLARE_TUNNEL_NAME set but cloudflared not installed — pkg install cloudflared"
+        exit 1
+    fi
+    log "starting cloudflared tunnel '$CLOUDFLARE_TUNNEL_NAME'"
+    start_if_down cloudflared "$PREFIX/bin/cloudflared" tunnel run "$CLOUDFLARE_TUNNEL_NAME"
+    # Make sure Funnel isn't still serving from a previous run.
+    $TAILSCALE funnel reset >/dev/null 2>&1 || true
+else
+    log "enabling Tailscale Funnel on port $GATEWAY_PORT"
+    $TAILSCALE funnel --bg "$GATEWAY_PORT" >> "$LOG_DIR/funnel.log" 2>&1 || \
+        log "funnel failed — run '$TAILSCALE up' interactively first?"
+fi
 
 log "boot sequence complete"
 BOOT_EOF
@@ -236,8 +255,10 @@ Next steps (do these once, in order):
 
 3. Edit $ENV_FILE and fill in:
      COGGO_TOKEN, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
-     GATEWAY_PUBLIC_URL (your tailnet HTTPS hostname),
+     GATEWAY_PUBLIC_URL (tailnet hostname OR your custom domain),
      OAUTH_ALLOWED_EMAILS  <-- REQUIRED. Empty = everyone is rejected.
+   Optional: set CLOUDFLARE_TUNNEL_NAME to expose via a custom domain
+   (cloudflared) instead of Tailscale Funnel — see docs/cloudflare-tunnel.md.
 
 4. Run the boot script once to bring everything up now (or reboot):
      ~/.termux/boot/30-coggo
