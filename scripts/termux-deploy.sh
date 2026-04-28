@@ -144,7 +144,7 @@ start_if_down() {
         return 0
     fi
     log "starting $name: $*"
-    nohup "$@" >> "$LOG_DIR/$name.log" 2>&1 &
+    setsid nohup "$@" >> "$LOG_DIR/$name.log" 2>&1 &
     echo $! > "$pidfile"
     sleep 1
     if ! kill -0 "$(cat "$pidfile")" 2>/dev/null; then
