@@ -72,13 +72,13 @@ coggo today         # structured daily briefing
 make dev            # build + serve MCP locally on :6177
 ```
 
-For remote access (claude.ai mobile, etc.) via Tailscale Funnel:
+For remote access (claude.ai mobile, etc.) on a custom domain, use Cloudflare Tunnel:
 
 ```bash
-make serve          # build + serve + expose via Tailscale Funnel
+make serve-public   # build coggo + OAuth gateway; expose with cloudflared
 ```
 
-`make help` lists all targets. `make serve` requires Tailscale installed and Funnel enabled in your tailnet ACLs — see [docs/tailscale-setup.md](docs/tailscale-setup.md).
+`make help` lists all targets. The phone deployment uses `cloudflared` and a named Cloudflare Tunnel — see [docs/cloudflare-tunnel.md](docs/cloudflare-tunnel.md).
 
 ## Day-to-day commands
 
@@ -118,7 +118,7 @@ claude mcp add --transport http coggo http://localhost:6177/mcp \
 
 Drop [templates/CLAUDE.md.template](templates/CLAUDE.md.template) into your repo's `CLAUDE.md` so Claude Code knows when to query Coggo proactively.
 
-**claude.ai (remote):** see [docs/claude-ai-setup.md](docs/claude-ai-setup.md). Requires Tailscale Funnel (run `make serve` instead of `make dev`).
+**claude.ai (remote):** see [docs/claude-ai-setup.md](docs/claude-ai-setup.md). The Termux phone path uses Cloudflare Tunnel plus the OAuth gateway.
 
 ## Documentation
 
@@ -126,8 +126,8 @@ Drop [templates/CLAUDE.md.template](templates/CLAUDE.md.template) into your repo
 - [api.md](docs/api.md) — MCP tool reference (the 12 tools v0.1 exposes)
 - [claude-ai-setup.md](docs/claude-ai-setup.md) — wiring claude.ai web and mobile
 - [claude-code-setup.md](docs/claude-code-setup.md) — wiring Claude Code
-- [tailscale-setup.md](docs/tailscale-setup.md) — Tailscale + Funnel for remote MCP access
 - [cloudflare-tunnel.md](docs/cloudflare-tunnel.md) — exposing Coggo on a custom domain via Cloudflare Tunnel
+- [tailscale-setup.md](docs/tailscale-setup.md) — legacy Tailscale + Funnel notes for non-Termux hosts
 - [backup.md](docs/backup.md) — continuous DB replication to Cloudflare R2 via Litestream
 - [skills/coggo/SKILL.md](skills/coggo/SKILL.md) — the Coggo skill for AI clients
 - [templates/CLAUDE.md.template](templates/CLAUDE.md.template) — drop-in CLAUDE.md for Claude Code repos

@@ -1,13 +1,14 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # termux-update.sh — pull latest code, rebuild, restart on Termux.
 #
-# Designed to be safe to run remotely:
-#   tailscale ssh phone bash ~/coggo/scripts/termux-update.sh
+# Designed to be safe to run remotely over any shell you already have into
+# the phone:
+#   ssh phone bash ~/coggo/scripts/termux-update.sh
 #
 # What this does:
 #   1. git pull (fast-forward only — refuses to merge or rebase)
 #   2. Re-runs termux-deploy.sh (idempotent: rebuilds, reinstalls)
-#   3. Stops the running coggo / gateway / tailscaled processes
+#   3. Stops the running coggo / gateway / cloudflared processes
 #   4. Re-runs the boot launcher to bring everything back up
 #   5. Tails the last 20 lines of each log so you can see it landed
 #
@@ -84,7 +85,7 @@ sleep 2
 
 echo
 echo "==> recent logs:"
-for log in coggo.log gateway.log tailscaled.log boot.log; do
+for log in coggo.log gateway.log cloudflared.log boot.log; do
     if [ -f "$LOG_DIR/$log" ]; then
         echo
         echo "--- $log (last 20 lines) ---"

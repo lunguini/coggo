@@ -2,26 +2,36 @@ package scripts_test
 
 import (
 	"os"
-	"regexp"
 	"strings"
 	"testing"
 )
 
-func TestTermuxDeployInstallsTailscaleWithUpstreamInstaller(t *testing.T) {
+func TestTermuxDeployUsesCloudflareOnly(t *testing.T) {
 	data, err := os.ReadFile("termux-deploy.sh")
 	if err != nil {
 		t.Fatal(err)
 	}
 	script := string(data)
 
-	pkgInstallBlock := regexp.MustCompile(`(?s)pkg install -y \\\n(.*?)\n\n`).FindStringSubmatch(script)
-	if len(pkgInstallBlock) != 2 {
-		t.Fatal("could not find primary pkg install block")
+	for _, forbidden := range []string{
+		"https://tailscale.com/install.sh",
+		"tailscaled",
+		"TS_SOCKET",
+		"TAILSCALE=",
+		"tailscale funnel",
+		"Tailscale Funnel",
+	} {
+		if strings.Contains(script, forbidden) {
+			t.Fatalf("termux-deploy.sh must not depend on %q", forbidden)
+		}
 	}
-	if strings.Contains(pkgInstallBlock[1], "tailscale") {
-		t.Fatal("Termux pkg install block must not include tailscale; Termux apt cannot locate that package")
-	}
-	if !strings.Contains(script, "https://tailscale.com/install.sh") {
-		t.Fatal("termux-deploy.sh must install Tailscale via https://tailscale.com/install.sh")
+	for _, required := range []string{
+		"pkg install -y cloudflared",
+		"if [ -z \"${CLOUDFLARE_TUNNEL_NAME:-}\" ]; then",
+		"start_if_down cloudflared \"$PREFIX/bin/cloudflared\" tunnel run \"$CLOUDFLARE_TUNNEL_NAME\"",
+	} {
+		if !strings.Contains(script, required) {
+			t.Fatalf("termux-deploy.sh must include %q", required)
+		}
 	}
 }

@@ -1,6 +1,6 @@
-# Custom domain via Cloudflare Tunnel
+# Custom Domain via Cloudflare Tunnel
 
-Tailscale Funnel is the zero-config default and works fine — but it pins your public URL to `*.ts.net`. If you'd rather expose Coggo on a domain you own (e.g. `coggo.example.com`), use Cloudflare Tunnel instead.
+Cloudflare Tunnel is the supported public exposure path for the Termux phone deployment. It gives Coggo a stable hostname on a domain you own (for example `coggo.example.com`) without running a VPN daemon on Android.
 
 The OAuth gateway, the rate limiter, the email allowlist — none of it changes. Only the layer that brings public traffic to localhost:8080 swaps out.
 
@@ -8,16 +8,12 @@ The OAuth gateway, the rate limiter, the email allowlist — none of it changes.
 
 `cloudflared` opens an outbound connection from the phone to Cloudflare's edge. Cloudflare terminates TLS at the edge and forwards plaintext over that tunnel to `localhost:$GATEWAY_PORT`. No inbound port, no router config, no static IP. Cloudflare DNS handles the hostname — you just point a CNAME at the tunnel.
 
-Tradeoffs vs Tailscale Funnel:
-
 - ✅ Stable hostname on a domain you control. Survives Tailscale account changes.
 - ✅ Cloudflare's edge sits in front (DDoS protection, optional WAF rules, request analytics).
-- ✅ No Funnel quotas or `*.ts.net` quirks.
-- ⚠️ One more daemon on the phone (`cloudflared`).
+- ✅ No VPN daemon, Funnel quotas, or `*.ts.net` hostname.
+- ⚠️ Runs one long-lived daemon on the phone (`cloudflared`).
 - ⚠️ Cloudflare sees decrypted requests at their edge. The gateway still validates Google OAuth tokens server-side, so there's no auth bypass — but Cloudflare's edge has visibility into request bodies. Worth knowing.
 - ⚠️ Tunnel credentials (`~/.cloudflared/<uuid>.json`) are a secret. Litestream replicates the SQLite DB only — back this file up separately.
-
-Tailscale itself stays running for SSH (`tailscale up --ssh`). You only stop using its Funnel feature.
 
 ## One-time setup
 
@@ -78,7 +74,7 @@ GATEWAY_PUBLIC_URL=https://coggo.example.com
 CLOUDFLARE_TUNNEL_NAME=coggo
 ```
 
-The boot launcher reads `CLOUDFLARE_TUNNEL_NAME` — when set, it starts `cloudflared tunnel run` and skips Tailscale Funnel.
+The boot launcher reads `CLOUDFLARE_TUNNEL_NAME` and starts `cloudflared tunnel run` for that named tunnel.
 
 ### 7. Update Google OAuth
 
@@ -87,8 +83,6 @@ In Google Cloud Console → your OAuth client → **Authorized redirect URIs**, 
 ```
 https://coggo.example.com/oauth/callback
 ```
-
-You can leave the old `*.ts.net` redirect in place during cutover; remove it once the new path is verified.
 
 ### 8. Restart
 
@@ -108,8 +102,6 @@ You should see `Registered tunnel connection` lines. Visit `https://coggo.exampl
 kill "$(cat ~/.coggo/run/cloudflared.pid)"
 ~/.termux/boot/30-coggo
 ```
-
-**Switch back to Tailscale Funnel**: blank out `CLOUDFLARE_TUNNEL_NAME` in `.env`, kill the cloudflared PID, re-run the boot script. The launcher's branch logic reverts cleanly.
 
 **Migrating the tunnel to another machine**: copy `~/.cloudflared/cert.pem` and `~/.cloudflared/<uuid>.json` to the new host, then run `cloudflared tunnel run coggo` there. Don't run the same tunnel from two machines simultaneously — Cloudflare load-balances across them, which will confuse the gateway's OAuth state.
 

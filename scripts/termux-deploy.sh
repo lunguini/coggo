@@ -4,7 +4,7 @@
 # What this does (idempotent — safe to re-run):
 #   1. Verifies we're running inside Termux.
 #   2. Installs required Termux packages (golang, git, clang,
-#      termux-services, termux-api, openssh) and Tailscale.
+#      termux-services, termux-api, openssh, cloudflared).
 #   3. Builds ./coggo (CGO, sqlite needs clang) and ./coggo-oauth-gateway.
 #   4. Installs both binaries to $PREFIX/bin.
 #   5. Drops an env-file template at <repo>/.env you must fill in. Same
@@ -12,7 +12,7 @@
 #      one convention across machines.
 #   6. Installs a Termux:Boot launcher at ~/.termux/boot/30-coggo so the
 #      whole stack comes back up after reboot.
-#   7. Prints next steps (tailscale up, fill env, reboot).
+#   7. Prints next steps (Cloudflare Tunnel setup, fill env, reboot).
 #
 # Prereqs you handle manually (one-time):
 #   - Install Termux from F-Droid (NOT Play Store — Play version is stale).
@@ -54,21 +54,9 @@ pkg install -y \
     openssh \
     jq curl
 
-# Tailscale is not available from Termux apt/pkg repos on all devices; the
-# upstream installer handles Termux and keeps this bootstrap idempotent.
-if ! command -v tailscale >/dev/null 2>&1 || ! command -v tailscaled >/dev/null 2>&1; then
-    echo
-    echo "==> installing Tailscale..."
-    curl -fsSL https://tailscale.com/install.sh | sh
-else
-    echo "==> Tailscale already installed"
-fi
-
-# cloudflared is optional — only needed if you exit via Cloudflare Tunnel
-# instead of Tailscale Funnel. Available in Termux's main repo. We don't
-# fail the deploy if it's missing; the boot launcher only invokes it when
-# CLOUDFLARE_TUNNEL_NAME is set in .env.
-pkg install -y cloudflared || echo "(cloudflared not installed — fine if you use Tailscale Funnel)"
+# cloudflared opens an outbound tunnel from the phone to Cloudflare. This is
+# the supported public exposure path for Termux; no Tailscale daemon is needed.
+pkg install -y cloudflared
 
 # --- 3. build ----------------------------------------------------------------
 
@@ -125,10 +113,9 @@ cat > "$BOOT_SCRIPT" <<'BOOT_EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 # Termux:Boot launcher for Coggo. Brings up:
 #   - termux-wake-lock (prevents Android from killing the process tree)
-#   - tailscaled in userspace mode (Funnel needs to drive this from CLI)
 #   - coggo serve
 #   - coggo-oauth-gateway
-#   - tailscale funnel pointing at the gateway port
+#   - cloudflared tunnel pointing at the gateway port
 #
 # Re-running is safe: each step checks for an existing PID first.
 
@@ -167,24 +154,7 @@ start_if_down() {
     fi
 }
 
-# 1. tailscaled in userspace mode. Required so Funnel CLI works from Termux —
-#    the Android Tailscale app is a system VPN and is not driveable from here.
-start_if_down tailscaled \
-    "$PREFIX/bin/tailscaled" --tun=userspace-networking \
-        --state="$HOME_DIR/.coggo/tailscaled.state" \
-        --socket="$RUN_DIR/tailscaled.sock"
-
-# Tailscale CLI needs to know which socket to talk to.
-export TS_SOCKET="$RUN_DIR/tailscaled.sock"
-TAILSCALE="$PREFIX/bin/tailscale --socket=$TS_SOCKET"
-
-# Wait for tailscaled to be ready (up to 15s).
-for _ in $(seq 1 15); do
-    if $TAILSCALE status >/dev/null 2>&1; then break; fi
-    sleep 1
-done
-
-# 2. Coggo + gateway. Sourcing .env is enough — every variable in it is
+# 1. Coggo + gateway. Sourcing .env is enough — every variable in it is
 #    declared with `export`, so children inherit them without `set -a`.
 if [ ! -f "$ENV_FILE" ]; then
     log "missing $ENV_FILE — refusing to start gateway"
@@ -216,26 +186,20 @@ done
 
 start_if_down gateway "$PREFIX/bin/coggo-oauth-gateway"
 
-# 3. Public exposure. Two paths:
-#    - CLOUDFLARE_TUNNEL_NAME set → run cloudflared (custom domain).
-#    - otherwise                 → Tailscale Funnel (*.ts.net hostname).
+# 2. Public exposure via Cloudflare Tunnel.
 GATEWAY_PORT="${GATEWAY_PORT:-8080}"
 GATEWAY_PORT="${GATEWAY_PORT#:}"
 
-if [ -n "${CLOUDFLARE_TUNNEL_NAME:-}" ]; then
-    if [ ! -x "$PREFIX/bin/cloudflared" ]; then
-        log "CLOUDFLARE_TUNNEL_NAME set but cloudflared not installed — pkg install cloudflared"
-        exit 1
-    fi
-    log "starting cloudflared tunnel '$CLOUDFLARE_TUNNEL_NAME'"
-    start_if_down cloudflared "$PREFIX/bin/cloudflared" tunnel run "$CLOUDFLARE_TUNNEL_NAME"
-    # Make sure Funnel isn't still serving from a previous run.
-    $TAILSCALE funnel reset >/dev/null 2>&1 || true
-else
-    log "enabling Tailscale Funnel on port $GATEWAY_PORT"
-    $TAILSCALE funnel --bg "$GATEWAY_PORT" >> "$LOG_DIR/funnel.log" 2>&1 || \
-        log "funnel failed — run '$TAILSCALE up' interactively first?"
+if [ -z "${CLOUDFLARE_TUNNEL_NAME:-}" ]; then
+    log "CLOUDFLARE_TUNNEL_NAME is not set — refusing to start public tunnel"
+    exit 1
 fi
+if [ ! -x "$PREFIX/bin/cloudflared" ]; then
+    log "cloudflared not installed — run pkg install cloudflared"
+    exit 1
+fi
+log "starting cloudflared tunnel '$CLOUDFLARE_TUNNEL_NAME'"
+start_if_down cloudflared "$PREFIX/bin/cloudflared" tunnel run "$CLOUDFLARE_TUNNEL_NAME"
 
 log "boot sequence complete"
 BOOT_EOF
@@ -249,25 +213,22 @@ cat <<EOF
 
 Next steps (do these once, in order):
 
-1. Authenticate Tailscale (interactive, one-time):
-     mkdir -p \$HOME/.coggo/run
-     tailscaled --tun=userspace-networking \\
-       --state=\$HOME/.coggo/tailscaled.state \\
-       --socket=\$HOME/.coggo/run/tailscaled.sock &
-     tailscale --socket=\$HOME/.coggo/run/tailscaled.sock up --ssh
-   The --ssh flag enables Tailscale SSH so you can drive updates
-   from your laptop (no keys, no port 22). Follow the URL it prints,
-   log in, then 'kill %1' when done.
+1. Configure Cloudflare Tunnel (one-time):
+     cloudflared tunnel login
+     cloudflared tunnel create coggo
+     cloudflared tunnel route dns coggo coggo.<your-domain>
+     \$EDITOR ~/.cloudflared/config.yml
+   Point the tunnel ingress at http://localhost:\${GATEWAY_PORT:-8080}.
+   See docs/cloudflare-tunnel.md for the full config shape.
 
 2. Mint a Coggo bearer token:
      coggo token create --all --label termux-gateway
 
 3. Edit $ENV_FILE and fill in:
      COGGO_TOKEN, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
-     GATEWAY_PUBLIC_URL (tailnet hostname OR your custom domain),
-     OAUTH_ALLOWED_EMAILS  <-- REQUIRED. Empty = everyone is rejected.
-   Optional: set CLOUDFLARE_TUNNEL_NAME to expose via a custom domain
-   (cloudflared) instead of Tailscale Funnel — see docs/cloudflare-tunnel.md.
+     GATEWAY_PUBLIC_URL (your Cloudflare Tunnel hostname),
+     CLOUDFLARE_TUNNEL_NAME, OAUTH_ALLOWED_EMAILS
+   OAUTH_ALLOWED_EMAILS is REQUIRED. Empty = everyone is rejected.
 
 4. Run the boot script once to bring everything up now (or reboot):
      ~/.termux/boot/30-coggo
@@ -280,5 +241,4 @@ Logs: ~/.coggo/logs/   PIDs: ~/.coggo/run/
 
 To stop everything:
    for f in ~/.coggo/run/*.pid; do kill "\$(cat \$f)" 2>/dev/null; done
-   tailscale --socket=\$HOME/.coggo/run/tailscaled.sock funnel reset
 EOF

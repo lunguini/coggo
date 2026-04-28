@@ -1,6 +1,6 @@
 # Wiring claude.ai to Coggo
 
-This guide gets claude.ai (web and mobile) talking to your Coggo over the public internet via Tailscale Funnel + an OAuth gateway. End state: ask "what projects do I have in business?" in claude.ai mobile and Claude calls Coggo's MCP tools to answer.
+This guide gets claude.ai (web and mobile) talking to your Coggo over the public internet via Cloudflare Tunnel + an OAuth gateway. End state: ask "what projects do I have in business?" in claude.ai mobile and Claude calls Coggo's MCP tools to answer.
 
 ## Why this is more than a single command
 
@@ -9,7 +9,7 @@ claude.ai's Custom Connector UI requires **OAuth 2.1**, not a static bearer toke
 Coggo's substrate stays sovereign: it speaks bearer tokens only. To bridge to claude.ai we run a small companion binary, `coggo-oauth-gateway`, which exposes an OAuth surface to the public, validates incoming tokens against a real IdP (Google in v0.1), and reverse-proxies the validated request to Coggo on localhost. Coggo never trusts Google or anyone else for identity — the gateway is a swappable transport that can be replaced or removed without changing the substrate.
 
 ```
-claude.ai mobile  --(OAuth bearer)-->  Tailscale Funnel
+claude.ai mobile  --(OAuth bearer)-->  Cloudflare Tunnel
                                             |
                                             v
                                   coggo-oauth-gateway:8080
@@ -20,11 +20,9 @@ claude.ai mobile  --(OAuth bearer)-->  Tailscale Funnel
                                        coggo:6177/mcp
 ```
 
-## 1. Install Tailscale and confirm Funnel works
+## 1. Configure Cloudflare Tunnel
 
-Follow [tailscale-setup.md](tailscale-setup.md) end-to-end. By the end you should have Tailscale signed in, the daemon running, and Funnel enabled in your tailnet ACLs.
-
-You do **not** need to manually run `tailscale funnel` here — `make serve-public` does that for you in step 5.
+Follow [cloudflare-tunnel.md](cloudflare-tunnel.md) end-to-end. By the end you should have `cloudflared` installed, a named tunnel created, DNS routed to your domain, and `~/.cloudflared/config.yml` pointing at the OAuth gateway on `localhost:8080`.
 
 ## 2. Initialize Coggo and mint a bearer token
 
@@ -57,8 +55,8 @@ claude.ai will sign you into Coggo via Google. You need to register Coggo as an 
 3. Open **APIs & Services → Credentials → Create credentials → OAuth client ID**.
    - **Application type:** Web application.
    - **Name:** Coggo gateway.
-   - **Authorized JavaScript origins:** leave empty for now (you'll add the Funnel URL in step 5 once you know it).
-   - **Authorized redirect URIs:** leave empty for now (same reason).
+   - **Authorized JavaScript origins:** your Cloudflare Tunnel origin, for example `https://coggo.example.com`.
+   - **Authorized redirect URIs:** your gateway callback URL, for example `https://coggo.example.com/oauth/callback`.
    - Click Create.
 4. Copy the **Client ID** (`...apps.googleusercontent.com`) and **Client Secret** (`GOCSPX-...`). You'll need both in the next step.
 
@@ -72,9 +70,9 @@ make install-all
 
 This installs both `coggo` and `coggo-oauth-gateway` to your `$GOBIN`.
 
-## 5. Run coggo + gateway + Funnel together
+## 5. Run coggo + gateway + Cloudflare Tunnel
 
-The `serve-public` make target wires everything up: starts coggo on localhost, starts Tailscale Funnel against the gateway port, learns the public URL Funnel allocated, then starts the gateway pointed at that URL. Ctrl-C cleans up all three.
+On Termux, `scripts/termux-deploy.sh` installs a boot launcher at `~/.termux/boot/30-coggo`. The launcher starts Coggo on localhost, starts the OAuth gateway, and runs `cloudflared tunnel run "$CLOUDFLARE_TUNNEL_NAME"`.
 
 Set the required environment variables (the script will refuse to start without them):
 
@@ -82,32 +80,33 @@ Set the required environment variables (the script will refuse to start without 
 export COGGO_TOKEN='<the secret you copied in step 2>'
 export GOOGLE_CLIENT_ID='<id>.apps.googleusercontent.com'
 export GOOGLE_CLIENT_SECRET='GOCSPX-...'
-
-make serve-public
+export GATEWAY_PUBLIC_URL='https://coggo.example.com'
+export CLOUDFLARE_TUNNEL_NAME='coggo'
+export OAUTH_ALLOWED_EMAILS='you@example.com'
 ```
 
-You will see something like:
+Then start the boot launcher:
 
 ```
-starting coggo on localhost:6177...
-starting Tailscale Funnel for gateway port 8080...
-Available on the internet: https://your-machine.tail-scale.ts.net/
-public URL: https://your-machine.tail-scale.ts.net
-claude.ai connector URL: https://your-machine.tail-scale.ts.net/mcp
+~/.termux/boot/30-coggo
 ```
 
-Copy that connector URL — you'll need it in step 7.
+The connector URL is:
 
-## 6. Add the Funnel URL to your Google OAuth client
+```
+https://coggo.example.com/mcp
+```
 
-Now that you know the Funnel URL, return to **Google Cloud Console → Credentials → your OAuth client** and add it to both lists:
+For local desktop testing, `make serve-public` can still run the same gateway path when `CLOUDFLARE_TUNNEL_NAME` and `GATEWAY_PUBLIC_URL` are set.
 
-- **Authorized JavaScript origins:** `https://your-machine.tail-scale.ts.net`
-- **Authorized redirect URIs:** `https://your-machine.tail-scale.ts.net/oauth/callback`
+## 6. Confirm Google OAuth settings
+
+Return to **Google Cloud Console → Credentials → your OAuth client** and confirm both lists use the Cloudflare Tunnel hostname:
+
+- **Authorized JavaScript origins:** `https://coggo.example.com`
+- **Authorized redirect URIs:** `https://coggo.example.com/oauth/callback`
 
 Save. Google's changes propagate within a minute.
-
-If your Funnel URL changes (different machine, different tailnet), update both lists again. The URL is normally stable as long as you keep using the same machine.
 
 ## 7. Add the Custom Connector in claude.ai
 
@@ -116,7 +115,7 @@ In claude.ai (web), open **Settings → Connectors → Add custom connector**. M
 Fill in:
 
 - **Name:** Coggo
-- **URL:** the connector URL from step 5 (`https://your-machine.tail-scale.ts.net/mcp`)
+- **URL:** the connector URL from step 5 (`https://coggo.example.com/mcp`)
 - **OAuth Client ID:** your Google client ID
 - **OAuth Client Secret:** your Google client secret
 
@@ -154,15 +153,12 @@ You should see "Test from claude.ai" in the output. End-to-end working.
 **`make serve-public` fails with "missing required env".**
 Set `COGGO_TOKEN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` before running. The error message echoes the exact `export` commands you need.
 
-**Funnel URL changes between sessions.**
-Tailscale Funnel URLs are tied to your machine name in your tailnet. If you renamed the machine or are running on a different one, update Google's authorized origins/redirects (step 6) to match.
-
 **claude.ai says it cannot connect to the connector.**
-1. From your laptop, test the connector URL: `curl -i https://your-machine.tail-scale.ts.net/mcp`. Expected response: `HTTP 401` with a `WWW-Authenticate` header pointing at `/.well-known/oauth-protected-resource`. If you get a connection error, the gateway is not running or the Funnel is misconfigured.
-2. Check the Funnel URL has `/mcp` on the end in the connector config.
+1. From your laptop, test the connector URL: `curl -i https://coggo.example.com/mcp`. Expected response: `HTTP 401` with a `WWW-Authenticate` header pointing at `/.well-known/oauth-protected-resource`. If you get a connection error, check `~/.coggo/logs/cloudflared.log` and `~/.coggo/logs/gateway.log`.
+2. Check the connector URL has `/mcp` on the end in the connector config.
 
 **Google sign-in says "redirect_uri_mismatch".**
-The Funnel URL in step 5 doesn't exactly match what's registered in Google (step 6). Common gotchas: trailing slash, missing `/oauth/callback`, http vs https. Update the Google client credentials and try again.
+The Cloudflare Tunnel URL in step 5 doesn't exactly match what's registered in Google (step 6). Common gotchas: trailing slash, missing `/oauth/callback`, http vs https. Update the Google client credentials and try again.
 
 **claude.ai says "Invalid redirect_uri" before reaching Google.**
 The gateway rejected claude.ai's callback URL because its domain isn't in the allowlist. The gateway ships with `claude.ai,claude.com` allowlisted by default. If you're using a non-default Claude domain (e.g. a custom Anthropic deployment) or a different MCP client entirely, set `OAUTH_ALLOWED_CLIENT_DOMAINS` before running `make serve-public`:
