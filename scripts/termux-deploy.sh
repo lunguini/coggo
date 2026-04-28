@@ -204,7 +204,63 @@ log "boot sequence complete"
 BOOT_EOF
 chmod 700 "$BOOT_SCRIPT"
 
-# --- 6. next steps -----------------------------------------------------------
+# --- 6. cloudflared config ---------------------------------------------------
+
+CF_CONFIG="$HOME/.cloudflared/config.yml"
+CF_CREDS=$(ls "$HOME/.cloudflared/"*.json 2>/dev/null | head -1)
+
+if [ -n "$CF_CREDS" ]; then
+    TUNNEL_UUID="$(basename "$CF_CREDS" .json)"
+    # Read CLOUDFLARE_TUNNEL_NAME + GATEWAY_PORT from .env if set.
+    # shellcheck disable=SC1090
+    [ -f "$REPO_ROOT/.env" ] && . "$REPO_ROOT/.env"
+    TUNNEL_NAME="${CLOUDFLARE_TUNNEL_NAME:-coggo}"
+    GW_PORT="${GATEWAY_PORT:-8080}"
+
+    if [ ! -f "$CF_CONFIG" ]; then
+        echo
+        echo "==> generating $CF_CONFIG"
+        # GATEWAY_PUBLIC_URL must already be set in .env — prompt if missing.
+        if [ -z "${GATEWAY_PUBLIC_URL:-}" ]; then
+            echo "    WARNING: GATEWAY_PUBLIC_URL is not set in .env"
+            echo "    Edit $CF_CONFIG after filling that in."
+            CF_HOSTNAME="<your-hostname>"
+        else
+            # Strip the scheme for the hostname field.
+            CF_HOSTNAME="${GATEWAY_PUBLIC_URL#https://}"
+            CF_HOSTNAME="${CF_HOSTNAME#http://}"
+        fi
+        mkdir -p "$HOME/.cloudflared"
+        cat > "$CF_CONFIG" <<CFEOF
+tunnel: $TUNNEL_UUID
+credentials-file: $CF_CREDS
+
+ingress:
+  - hostname: $CF_HOSTNAME
+    service: http://localhost:$GW_PORT
+  - service: http_status:404
+CFEOF
+        chmod 600 "$CF_CONFIG"
+    else
+        echo "==> cloudflared config already exists at $CF_CONFIG (leaving it alone)"
+    fi
+
+    # Register the DNS route (idempotent).
+    if [ -n "${GATEWAY_PUBLIC_URL:-}" ]; then
+        CF_HOSTNAME="${GATEWAY_PUBLIC_URL#https://}"
+        CF_HOSTNAME="${CF_HOSTNAME#http://}"
+        echo "==> registering DNS route: $CF_HOSTNAME -> tunnel $TUNNEL_NAME"
+        cloudflared tunnel route dns "$TUNNEL_NAME" "$CF_HOSTNAME" || true
+    fi
+else
+    echo
+    echo "==> cloudflared tunnel not yet created — skipping config generation."
+    echo "    Run these once, then re-run this deploy script:"
+    echo "      cloudflared tunnel login"
+    echo "      cloudflared tunnel create coggo"
+fi
+
+# --- 7. next steps -----------------------------------------------------------
 
 cat <<EOF
 
@@ -212,13 +268,11 @@ cat <<EOF
 
 Next steps (do these once, in order):
 
-1. Configure Cloudflare Tunnel (one-time):
+1. If not done yet, create the Cloudflare Tunnel then re-run this script:
      cloudflared tunnel login
      cloudflared tunnel create coggo
-     cloudflared tunnel route dns coggo coggo.<your-domain>
-     \$EDITOR ~/.cloudflared/config.yml
-   Point the tunnel ingress at http://localhost:\${GATEWAY_PORT:-8080}.
-   See docs/cloudflare-tunnel.md for the full config shape.
+   This script auto-generates ~/.cloudflared/config.yml and registers the
+   DNS route once the tunnel credentials exist.
 
 2. Edit $ENV_FILE and fill in:
      GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
