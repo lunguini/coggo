@@ -30,6 +30,8 @@ func TestTermuxDeployUsesCloudflareOnly(t *testing.T) {
 		"pkg install -y cloudflared",
 		"if [ -z \"${CLOUDFLARE_TUNNEL_NAME:-}\" ]; then",
 		"start_if_down cloudflared \"$PREFIX/bin/cloudflared\" tunnel run \"$CLOUDFLARE_TUNNEL_NAME\"",
+		"Restore an existing Coggo DB from R2 before first boot",
+		"litestream restore -o \"\\$COGGO_DB_PATH\" -config scripts/litestream.yml",
 	} {
 		if !strings.Contains(script, required) {
 			t.Fatalf("termux-deploy.sh must include %q", required)

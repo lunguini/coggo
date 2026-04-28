@@ -220,20 +220,28 @@ Next steps (do these once, in order):
    Point the tunnel ingress at http://localhost:\${GATEWAY_PORT:-8080}.
    See docs/cloudflare-tunnel.md for the full config shape.
 
-2. Mint a Coggo bearer token:
-     coggo token create --all --label termux-gateway
-
-3. Edit $ENV_FILE and fill in:
-     COGGO_TOKEN, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
+2. Edit $ENV_FILE and fill in:
+     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
      GATEWAY_PUBLIC_URL (your Cloudflare Tunnel hostname),
-     CLOUDFLARE_TUNNEL_NAME, OAUTH_ALLOWED_EMAILS
+     CLOUDFLARE_TUNNEL_NAME, OAUTH_ALLOWED_EMAILS,
+     COGGO_DB_PATH, R2_ACCOUNT_ID, R2_BUCKET,
+     R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
    OAUTH_ALLOWED_EMAILS is REQUIRED. Empty = everyone is rejected.
 
-4. Run the boot script once to bring everything up now (or reboot):
+3. Restore an existing Coggo DB from R2 before first boot (skip for a fresh DB):
+     source $ENV_FILE
+     mkdir -p "\$(dirname "\$COGGO_DB_PATH")"
+     litestream restore -o "\$COGGO_DB_PATH" -config scripts/litestream.yml
+   Do this before starting the boot script so Coggo does not create an empty DB.
+
+4. Mint a Coggo bearer token, then add the printed secret to COGGO_TOKEN in $ENV_FILE:
+     coggo token create --all --label termux-gateway
+
+5. Run the boot script once to bring everything up now (or reboot):
      ~/.termux/boot/30-coggo
      tail -f ~/.coggo/logs/*.log
 
-5. In claude.ai (or ChatGPT) custom connector, point at:
+6. In claude.ai (or ChatGPT) custom connector, point at:
      \$GATEWAY_PUBLIC_URL/mcp
 
 Logs: ~/.coggo/logs/   PIDs: ~/.coggo/run/
