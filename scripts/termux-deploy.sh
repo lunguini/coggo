@@ -176,7 +176,7 @@ fi
 # Wait for coggo's MCP port before launching the gateway.
 COGGO_PORT="${COGGO_PORT:-6177}"
 for _ in $(seq 1 15); do
-    if "$PREFIX/bin/curl" -s -o /dev/null -w '%{http_code}' \
+    if "$PREFIX/bin/curl" -s --max-time 2 -o /dev/null -w '%{http_code}' \
         "http://localhost:$COGGO_PORT/mcp" 2>/dev/null | grep -qE '^[0-9]+$'; then
         break
     fi
