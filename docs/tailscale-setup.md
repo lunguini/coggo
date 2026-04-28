@@ -12,6 +12,12 @@ macOS:
 brew install tailscale
 ```
 
+Termux:
+
+```
+curl -fsSL https://tailscale.com/install.sh | sh
+```
+
 Or download the app from <https://tailscale.com/download>. Linux and Windows installers are at the same link.
 
 Start the Tailscale daemon (the brew install will print platform-specific instructions; on Linux it is typically `sudo systemctl enable --now tailscaled`).

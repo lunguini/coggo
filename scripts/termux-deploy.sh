@@ -3,8 +3,8 @@
 #
 # What this does (idempotent — safe to re-run):
 #   1. Verifies we're running inside Termux.
-#   2. Installs required Termux packages (golang, git, clang, tailscale,
-#      termux-services, termux-api, openssh).
+#   2. Installs required Termux packages (golang, git, clang,
+#      termux-services, termux-api, openssh) and Tailscale.
 #   3. Builds ./coggo (CGO, sqlite needs clang) and ./coggo-oauth-gateway.
 #   4. Installs both binaries to $PREFIX/bin.
 #   5. Drops an env-file template at <repo>/.env you must fill in. Same
@@ -44,16 +44,25 @@ echo
 
 echo "==> installing Termux packages..."
 pkg update -y >/dev/null
-# clang: required for CGO sqlite. tailscale: userspace-mode daemon.
+# clang: required for CGO sqlite.
 # termux-services: sv-style supervisor (not strictly needed since we use
 # Termux:Boot, but useful for `sv restart coggo` etc).
 pkg install -y \
     golang git clang make \
-    tailscale \
     termux-services \
     termux-api \
     openssh \
     jq curl
+
+# Tailscale is not available from Termux apt/pkg repos on all devices; the
+# upstream installer handles Termux and keeps this bootstrap idempotent.
+if ! command -v tailscale >/dev/null 2>&1 || ! command -v tailscaled >/dev/null 2>&1; then
+    echo
+    echo "==> installing Tailscale..."
+    curl -fsSL https://tailscale.com/install.sh | sh
+else
+    echo "==> Tailscale already installed"
+fi
 
 # cloudflared is optional — only needed if you exit via Cloudflare Tunnel
 # instead of Tailscale Funnel. Available in Termux's main repo. We don't
