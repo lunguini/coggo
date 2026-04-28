@@ -20,6 +20,7 @@ func TestTermuxDeployUsesCloudflareOnly(t *testing.T) {
 		"TAILSCALE=",
 		"tailscale funnel",
 		"Tailscale Funnel",
+		"clang",
 	} {
 		if strings.Contains(script, forbidden) {
 			t.Fatalf("termux-deploy.sh must not depend on %q", forbidden)

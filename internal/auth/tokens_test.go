@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestIssueAndVerify(t *testing.T) {
@@ -30,6 +31,7 @@ func TestIssueAndVerify(t *testing.T) {
 	if tok.ID != id {
 		t.Fatalf("verified id mismatch: %s vs %s", tok.ID, id)
 	}
+	waitForTouch(t, s, id)
 }
 
 func TestVerifyWrongPeer(t *testing.T) {
@@ -45,9 +47,11 @@ func TestWildcardPeer(t *testing.T) {
 	s, _ := Open(t.TempDir())
 	ctx := context.Background()
 	_, secret, _ := s.Issue(ctx, []string{"*"}, "")
-	if _, err := s.Verify(ctx, secret, "anything"); err != nil {
+	tok, err := s.Verify(ctx, secret, "anything")
+	if err != nil {
 		t.Fatalf("wildcard should match: %v", err)
 	}
+	waitForTouch(t, s, tok.ID)
 }
 
 func TestRevoke(t *testing.T) {
@@ -71,14 +75,36 @@ func TestPersistAcrossReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s2.Verify(ctx, secret, "business"); err != nil {
+	tok, err := s2.Verify(ctx, secret, "business")
+	if err != nil {
 		t.Fatalf("verify after reopen: %v", err)
 	}
+	waitForTouch(t, s2, tok.ID)
 }
 
 func TestUnknownTokenRejected(t *testing.T) {
 	s, _ := Open(t.TempDir())
 	if _, err := s.Verify(context.Background(), "not-a-real-secret", "business"); err == nil {
 		t.Fatal("expected error for unknown token")
+	}
+}
+
+func waitForTouch(t *testing.T, s *Store, id string) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for {
+		tokens, err := s.List(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, tok := range tokens {
+			if tok.ID == id && !tok.LastUsedAt.IsZero() {
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for token %s LastUsedAt", id)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

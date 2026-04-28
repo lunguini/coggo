@@ -36,7 +36,7 @@ help:
 	@echo "  version            print the version stamp"
 
 build:
-	CGO_ENABLED=1 go build -ldflags "$(LDFLAGS)" -o coggo ./cmd/coggo
+	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o coggo ./cmd/coggo
 	@echo "built ./coggo ($(VERSION))"
 
 build-gateway:
@@ -44,7 +44,7 @@ build-gateway:
 	@echo "built ./coggo-oauth-gateway"
 
 install:
-	CGO_ENABLED=1 go install -ldflags "$(LDFLAGS)" ./cmd/coggo
+	CGO_ENABLED=0 go install -ldflags "$(LDFLAGS)" ./cmd/coggo
 	@echo "installed coggo $(VERSION) to $(GOBIN)/coggo"
 	@command -v coggo >/dev/null 2>&1 || echo "warning: $(GOBIN) is not on PATH — add it to use 'coggo' directly"
 
@@ -55,7 +55,7 @@ install-gateway:
 install-all: install install-gateway
 
 run:
-	CGO_ENABLED=1 go run -ldflags "$(LDFLAGS)" ./cmd/coggo $(ARGS)
+	CGO_ENABLED=0 go run -ldflags "$(LDFLAGS)" ./cmd/coggo $(ARGS)
 
 dev: build
 	./coggo serve

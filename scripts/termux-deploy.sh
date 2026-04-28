@@ -3,9 +3,9 @@
 #
 # What this does (idempotent — safe to re-run):
 #   1. Verifies we're running inside Termux.
-#   2. Installs required Termux packages (golang, git, clang,
+#   2. Installs required Termux packages (golang, git,
 #      termux-services, termux-api, openssh, cloudflared).
-#   3. Builds ./coggo (CGO, sqlite needs clang) and ./coggo-oauth-gateway.
+#   3. Builds ./coggo and ./coggo-oauth-gateway.
 #   4. Installs both binaries to $PREFIX/bin.
 #   5. Drops an env-file template at <repo>/.env you must fill in. Same
 #      filename and shape as the laptop's repo-root .env, so secrets follow
@@ -44,11 +44,10 @@ echo
 
 echo "==> installing Termux packages..."
 pkg update -y >/dev/null
-# clang: required for CGO sqlite.
 # termux-services: sv-style supervisor (not strictly needed since we use
 # Termux:Boot, but useful for `sv restart coggo` etc).
 pkg install -y \
-    golang git clang make \
+    golang git make \
     termux-services \
     termux-api \
     openssh \

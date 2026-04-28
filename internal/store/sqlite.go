@@ -1,6 +1,6 @@
 // Package store implements the persistence layer for Coggo v0.1.
 //
-// The backend is SQLite (via mattn/go-sqlite3) augmented with the sqlite-vec
+// The backend is SQLite (via ncruces/go-sqlite3) augmented with the sqlite-vec
 // extension for vector similarity search. A single SQLite database backs the
 // whole binary; per-peer isolation is enforced at the application layer by
 // tagging every row with PeerDID.
@@ -22,12 +22,21 @@ import (
 	"sync"
 	"time"
 
-	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
-	_ "github.com/mattn/go-sqlite3"
+	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/ncruces"
+	sqlite3 "github.com/ncruces/go-sqlite3"
+	_ "github.com/ncruces/go-sqlite3/driver"
 	"github.com/oklog/ulid/v2"
+	"github.com/tetratelabs/wazero"
+	"github.com/tetratelabs/wazero/api"
+	"github.com/tetratelabs/wazero/experimental"
 
 	"github.com/lunguini/coggo/internal/types"
 )
+
+func init() {
+	sqlite3.RuntimeConfig = wazero.NewRuntimeConfig().
+		WithCoreFeatures(api.CoreFeaturesV2 | experimental.CoreFeaturesThreads)
+}
 
 // Store is the SQLite-backed implementation of types.Store.
 type Store struct {
@@ -37,8 +46,6 @@ type Store struct {
 	mu      sync.Mutex
 	entropy *ulid.MonotonicEntropy
 }
-
-var registerVecOnce sync.Once
 
 // New constructs a Store backed by a SQLite database at the given path. The
 // dim argument fixes the dimensionality of vectors stored in the
@@ -54,18 +61,10 @@ func New(dbPath string, dim int) (*Store, error) {
 		return nil, fmt.Errorf("store: vector dimension must be positive, got %d", dim)
 	}
 
-	// sqlite_vec.Auto() registers the sqlite-vec extension as auto-loaded for
-	// every subsequently-opened sqlite3 connection. Safe to call once per
-	// process.
-	var registerErr error
-	registerVecOnce.Do(func() {
-		sqlite_vec.Auto()
-	})
-	if registerErr != nil {
-		return nil, fmt.Errorf("store: register sqlite-vec: %w", registerErr)
-	}
-
-	dsn := fmt.Sprintf("file:%s?_journal=WAL&_busy_timeout=5000&_foreign_keys=on", dbPath)
+	dsn := fmt.Sprintf(
+		"file:%s?_pragma=journal_mode(wal)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(on)",
+		dbPath,
+	)
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("store: open sqlite (%s): %w", dbPath, err)
@@ -683,7 +682,7 @@ func (s *Store) SubstringSearch(ctx context.Context, peerDID, query, typeFilter 
 		limit = 10
 	}
 
-	conds := []string{"peer_did = ?", "archived_at IS NULL", "data LIKE '%' || ? || '%'"}
+	conds := []string{"peer_did = ?", "archived_at IS NULL", "CAST(data AS TEXT) LIKE '%' || ? || '%'"}
 	args := []any{peerDID, query}
 	if typeFilter != "" {
 		conds = append(conds, "type = ?")
