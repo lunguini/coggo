@@ -7,7 +7,7 @@
 #
 # What this does:
 #   1. git pull (fast-forward only — refuses to merge or rebase)
-#   2. Re-runs termux-deploy.sh (idempotent: rebuilds, reinstalls)
+#   2. Re-runs termux-deploy.sh (idempotent: rebuilds, reinstalls via GOBIN)
 #   3. Stops the running coggo / gateway / cloudflared processes
 #   4. Re-runs the boot launcher to bring everything back up
 #   5. Tails the last 20 lines of each log so you can see it landed

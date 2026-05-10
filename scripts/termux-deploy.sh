@@ -5,8 +5,8 @@
 #   1. Verifies we're running inside Termux.
 #   2. Installs required Termux packages (golang, git,
 #      termux-services, termux-api, openssh, cloudflared).
-#   3. Builds ./coggo and ./coggo-oauth-gateway.
-#   4. Installs both binaries to $PREFIX/bin.
+#   3. Builds and installs coggo + coggo-oauth-gateway via make install-all.
+#   4. Installs Go-built binaries to $GOBIN (or go env GOPATH/bin).
 #   5. Drops an env-file template at <repo>/.env you must fill in. Same
 #      filename and shape as the laptop's repo-root .env, so secrets follow
 #      one convention across machines.
@@ -40,6 +40,18 @@ echo "    HOME:    $HOME"
 echo "    PREFIX:  $PREFIX"
 echo
 
+resolve_go_bin_dir() {
+    local dir
+    dir="${GOBIN:-}"
+    if [ -z "$dir" ]; then
+        dir="$(go env GOBIN 2>/dev/null || true)"
+    fi
+    if [ -z "$dir" ]; then
+        dir="$(go env GOPATH)/bin"
+    fi
+    printf '%s\n' "$dir"
+}
+
 # --- 2. packages -------------------------------------------------------------
 
 echo "==> installing Termux packages..."
@@ -59,23 +71,24 @@ pkg install -y cloudflared
 
 # --- 3. build ----------------------------------------------------------------
 
-echo
-echo "==> building binaries (this takes ~1-2 min on a phone)..."
-# Use the Makefile so we pick up VERSION + LDFLAGS consistently.
-make build build-gateway
+APP_BIN_DIR="$(resolve_go_bin_dir)"
+mkdir -p "$APP_BIN_DIR"
+export GOBIN="$APP_BIN_DIR"
+export PATH="$APP_BIN_DIR:$PATH"
 
 echo
-echo "==> installing to \$PREFIX/bin..."
-install -m 0755 ./coggo                "$PREFIX/bin/coggo"
-install -m 0755 ./coggo-oauth-gateway  "$PREFIX/bin/coggo-oauth-gateway"
+echo "==> installing Go binaries to $APP_BIN_DIR (this takes ~1-2 min on a phone)..."
+# Use the Makefile so we pick up VERSION + LDFLAGS consistently and install
+# into GOBIN instead of Termux's package binary directory.
+make install-all
 
 # Litestream — continuous DB replication to Cloudflare R2. Termux's pkg
 # repo doesn't ship it, so we go install. Idempotent: re-running upgrades
-# in place. Skipped if it's already on PATH and current.
-if ! command -v litestream >/dev/null 2>&1; then
+# in place. Installed next to the other Go-built binaries.
+if [ ! -x "$APP_BIN_DIR/litestream" ]; then
     echo
     echo "==> installing litestream (one-time, ~30s)..."
-    GOBIN="$PREFIX/bin" go install github.com/benbjohnson/litestream/cmd/litestream@latest
+    GOBIN="$APP_BIN_DIR" go install github.com/benbjohnson/litestream/cmd/litestream@latest
 fi
 
 # --- 4. config + env template -----------------------------------------------
@@ -132,6 +145,25 @@ mkdir -p "$LOG_DIR" "$RUN_DIR"
 ts() { date '+%Y-%m-%dT%H:%M:%S'; }
 log() { echo "[$(ts)] $*" >> "$LOG_DIR/boot.log"; }
 
+resolve_app_bin_dir() {
+    local dir
+    dir="${GOBIN:-}"
+    if [ -z "$dir" ] && [ -x "$PREFIX/bin/go" ]; then
+        dir="$("$PREFIX/bin/go" env GOBIN 2>/dev/null || true)"
+    fi
+    if [ -z "$dir" ] && [ -x "$PREFIX/bin/go" ]; then
+        dir="$("$PREFIX/bin/go" env GOPATH)/bin"
+    fi
+    if [ -z "$dir" ]; then
+        dir="$HOME_DIR/go/bin"
+    fi
+    printf '%s\n' "$dir"
+}
+
+APP_BIN_DIR="$(resolve_app_bin_dir)"
+export PATH="$APP_BIN_DIR:$PREFIX/bin:${PATH:-}"
+log "app bin dir: $APP_BIN_DIR"
+
 # 0. Wake lock so Android doesn't suspend us.
 "$PREFIX/bin/termux-wake-lock" || log "termux-wake-lock failed (Termux:API not installed?)"
 
@@ -162,12 +194,15 @@ fi
 # shellcheck disable=SC1090
 . "$ENV_FILE"
 
-start_if_down coggo "$PREFIX/bin/coggo" serve
+APP_BIN_DIR="$(resolve_app_bin_dir)"
+export PATH="$APP_BIN_DIR:$PREFIX/bin:${PATH:-}"
+
+start_if_down coggo "$APP_BIN_DIR/coggo" serve
 
 # Litestream — only if all four R2_* values are set in .env.
 if [ -n "${R2_ACCESS_KEY_ID:-}" ] && [ -n "${R2_SECRET_ACCESS_KEY:-}" ] \
    && [ -n "${R2_ACCOUNT_ID:-}" ] && [ -n "${R2_BUCKET:-}" ]; then
-    start_if_down litestream "$PREFIX/bin/litestream" replicate \
+    start_if_down litestream "$APP_BIN_DIR/litestream" replicate \
         -config "$HOME_DIR/coggo/scripts/litestream.yml"
 else
     log "litestream skipped — R2_* vars not all set in .env (coggo will run without replication)"
@@ -183,7 +218,7 @@ for _ in $(seq 1 15); do
     sleep 1
 done
 
-start_if_down gateway "$PREFIX/bin/coggo-oauth-gateway"
+start_if_down gateway "$APP_BIN_DIR/coggo-oauth-gateway"
 
 # 2. Public exposure via Cloudflare Tunnel.
 GATEWAY_PORT="${GATEWAY_PORT:-8080}"
@@ -289,7 +324,7 @@ Next steps (do these once, in order):
    Do this before starting the boot script so Coggo does not create an empty DB.
 
 4. Mint a Coggo bearer token, then add the printed secret to COGGO_TOKEN in $ENV_FILE:
-     coggo token create --all --label termux-gateway
+     $APP_BIN_DIR/coggo token create --all --label termux-gateway
 
 5. Run the boot script once to bring everything up now (or reboot):
      ~/.termux/boot/30-coggo
