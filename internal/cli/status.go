@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -179,15 +178,16 @@ func nearestExistingPath(path string) string {
 }
 
 func probeMemory() (string, string) {
-	if runtime.GOOS != "linux" {
-		return "unknown", "MemAvailable is only checked on Linux/Termux"
-	}
 	f, err := os.Open("/proc/meminfo")
 	if err != nil {
-		return "unknown", err.Error()
+		return "unknown", "MemAvailable is not exposed at /proc/meminfo"
 	}
 	defer f.Close()
-	available, ok := parseMemAvailable(f)
+	return probeMemoryFromReader(f)
+}
+
+func probeMemoryFromReader(r io.Reader) (string, string) {
+	available, ok := parseMemAvailable(r)
 	if !ok {
 		return "unknown", "MemAvailable not found in /proc/meminfo"
 	}

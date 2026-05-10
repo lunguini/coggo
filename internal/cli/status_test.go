@@ -32,6 +32,16 @@ func TestParseMemAvailable(t *testing.T) {
 	}
 }
 
+func TestProbeMemoryFromReader(t *testing.T) {
+	status, detail := probeMemoryFromReader(strings.NewReader("MemAvailable:   524288 kB\n"))
+	if status != "ok" {
+		t.Fatalf("status = %q, want ok; detail=%q", status, detail)
+	}
+	if detail != "512.0 MiB available" {
+		t.Fatalf("detail = %q, want 512.0 MiB available", detail)
+	}
+}
+
 func TestFormatBytes(t *testing.T) {
 	for _, tc := range []struct {
 		bytes uint64
