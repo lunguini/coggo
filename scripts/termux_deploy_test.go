@@ -25,6 +25,7 @@ func TestTermuxDeployUsesCloudflareOnly(t *testing.T) {
 		"install -m 0755 ./coggo-oauth-gateway",
 		"ENV_FILE=\"$REPO_ROOT/.env\"",
 		"ENV_FILE=\"$HOME_DIR/coggo/.env\"",
+		"cloudflared tunnel route dns \"$TUNNEL_NAME\" \"$CF_HOSTNAME\" || true",
 	} {
 		if strings.Contains(script, forbidden) {
 			t.Fatalf("termux-deploy.sh must not depend on %q", forbidden)
@@ -35,7 +36,7 @@ func TestTermuxDeployUsesCloudflareOnly(t *testing.T) {
 		"if [ -z \"${CLOUDFLARE_TUNNEL_NAME:-}\" ]; then",
 		"start_if_down cloudflared \"$PREFIX/bin/cloudflared\" tunnel run \"$CLOUDFLARE_TUNNEL_NAME\"",
 		"Restore an existing Coggo DB from R2 before first boot",
-		"litestream restore -o \"\\$COGGO_DB_PATH\" -config scripts/litestream.yml",
+		"litestream restore -config scripts/litestream.yml -o \"\\$COGGO_DB_PATH\" \"\\$COGGO_DB_PATH\"",
 		"make install-all",
 		"APP_BIN_DIR=",
 		"start_if_down coggo \"$APP_BIN_DIR/coggo\" serve",
@@ -43,6 +44,9 @@ func TestTermuxDeployUsesCloudflareOnly(t *testing.T) {
 		"start_if_down litestream \"$APP_BIN_DIR/litestream\" replicate",
 		"ENV_FILE=\"$HOME/.coggo/env\"",
 		"ENV_FILE=\"$HOME_DIR/.coggo/env\"",
+		"write_cloudflared_config()",
+		"cp \"$CF_CONFIG\" \"$CF_CONFIG.bak.",
+		"route_output=\"$(cloudflared tunnel route dns \"$TUNNEL_NAME\" \"$CF_HOSTNAME\" 2>&1)\"",
 	} {
 		if !strings.Contains(script, required) {
 			t.Fatalf("termux-deploy.sh must include %q", required)

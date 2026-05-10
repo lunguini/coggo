@@ -55,11 +55,13 @@ cd /path/to/coggo
 source .env       # variables are declared with `export`, so this is enough
 
 litestream restore \
+  -config scripts/litestream.yml \
   -o /tmp/coggo-restored.db \
-  -config scripts/litestream.yml
+  "$COGGO_DB_PATH"
 ```
 
 This pulls the latest snapshot + replays WAL frames to reconstruct the DB at the most recent state Litestream had time to ship. Point-in-time recovery (`-timestamp`) is also supported — useful if you need to roll back to before a bad write.
+The final `"$COGGO_DB_PATH"` argument selects the database entry from `scripts/litestream.yml`; `-o` only controls where the restored file is written.
 
 To restore in place on a running deployment:
 
@@ -68,7 +70,7 @@ To restore in place on a running deployment:
 for f in ~/.coggo/run/*.pid; do kill "$(cat $f)" 2>/dev/null; done
 
 # Restore on top of the current path.
-litestream restore -o "$COGGO_DB_PATH" -config ~/coggo/scripts/litestream.yml
+litestream restore -config ~/coggo/scripts/litestream.yml -o "$COGGO_DB_PATH" "$COGGO_DB_PATH"
 
 # Bring everything back up.
 ~/.termux/boot/30-coggo

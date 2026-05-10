@@ -249,6 +249,20 @@ chmod 700 "$BOOT_SCRIPT"
 CF_CONFIG="$HOME/.cloudflared/config.yml"
 CF_CREDS=$(ls "$HOME/.cloudflared/"*.json 2>/dev/null | head -1)
 
+write_cloudflared_config() {
+    mkdir -p "$HOME/.cloudflared"
+    cat > "$CF_CONFIG" <<CFEOF
+tunnel: $TUNNEL_UUID
+credentials-file: $CF_CREDS
+
+ingress:
+  - hostname: $CF_HOSTNAME
+    service: http://localhost:$GW_PORT
+  - service: http_status:404
+CFEOF
+    chmod 600 "$CF_CONFIG"
+}
+
 if [ -n "$CF_CREDS" ]; then
     TUNNEL_UUID="$(basename "$CF_CREDS" .json)"
     # Read CLOUDFLARE_TUNNEL_NAME + GATEWAY_PORT from the Termux env file if set.
@@ -270,17 +284,19 @@ if [ -n "$CF_CREDS" ]; then
             CF_HOSTNAME="${GATEWAY_PUBLIC_URL#https://}"
             CF_HOSTNAME="${CF_HOSTNAME#http://}"
         fi
-        mkdir -p "$HOME/.cloudflared"
-        cat > "$CF_CONFIG" <<CFEOF
-tunnel: $TUNNEL_UUID
-credentials-file: $CF_CREDS
-
-ingress:
-  - hostname: $CF_HOSTNAME
-    service: http://localhost:$GW_PORT
-  - service: http_status:404
-CFEOF
-        chmod 600 "$CF_CONFIG"
+        write_cloudflared_config
+    elif [ -n "${GATEWAY_PUBLIC_URL:-}" ]; then
+        CF_HOSTNAME="${GATEWAY_PUBLIC_URL#https://}"
+        CF_HOSTNAME="${CF_HOSTNAME#http://}"
+        if ! grep -Fq "hostname: $CF_HOSTNAME" "$CF_CONFIG" \
+           || ! grep -Fq "service: http://localhost:$GW_PORT" "$CF_CONFIG"; then
+            echo
+            echo "==> updating $CF_CONFIG for $CF_HOSTNAME -> localhost:$GW_PORT"
+            cp "$CF_CONFIG" "$CF_CONFIG.bak.$(date +%Y%m%d%H%M%S)"
+            write_cloudflared_config
+        else
+            echo "==> cloudflared config already matches $CF_HOSTNAME -> localhost:$GW_PORT"
+        fi
     else
         echo "==> cloudflared config already exists at $CF_CONFIG (leaving it alone)"
     fi
@@ -290,7 +306,16 @@ CFEOF
         CF_HOSTNAME="${GATEWAY_PUBLIC_URL#https://}"
         CF_HOSTNAME="${CF_HOSTNAME#http://}"
         echo "==> registering DNS route: $CF_HOSTNAME -> tunnel $TUNNEL_NAME"
-        cloudflared tunnel route dns "$TUNNEL_NAME" "$CF_HOSTNAME" || true
+        if ! route_output="$(cloudflared tunnel route dns "$TUNNEL_NAME" "$CF_HOSTNAME" 2>&1)"; then
+            if printf '%s\n' "$route_output" | grep -qi "already exists"; then
+                echo "==> DNS route already exists for $CF_HOSTNAME"
+            else
+                printf '%s\n' "$route_output" >&2
+                exit 1
+            fi
+        elif [ -n "$route_output" ]; then
+            printf '%s\n' "$route_output"
+        fi
     fi
 else
     echo
@@ -328,7 +353,7 @@ Next steps (do these once, in order):
 3. Restore an existing Coggo DB from R2 before first boot (skip for a fresh DB):
      source $ENV_FILE
      mkdir -p "\$(dirname "\$COGGO_DB_PATH")"
-     litestream restore -o "\$COGGO_DB_PATH" -config scripts/litestream.yml
+     litestream restore -config scripts/litestream.yml -o "\$COGGO_DB_PATH" "\$COGGO_DB_PATH"
    Do this before starting the boot script so Coggo does not create an empty DB.
 
 4. Mint a Coggo bearer token, then add the printed secret to COGGO_TOKEN in $ENV_FILE:
