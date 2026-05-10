@@ -8,16 +8,24 @@ import (
 func TestStatusEndpointURL(t *testing.T) {
 	for _, tc := range []struct {
 		addr string
+		path string
 		want string
 	}{
-		{addr: "localhost:6177", want: "http://127.0.0.1:6177/mcp"},
-		{addr: ":6177", want: "http://127.0.0.1:6177/mcp"},
-		{addr: "127.0.0.1:6177", want: "http://127.0.0.1:6177/mcp"},
+		{addr: "localhost:6177", path: "/mcp", want: "http://127.0.0.1:6177/mcp"},
+		{addr: ":6177", path: "/healthz", want: "http://127.0.0.1:6177/healthz"},
+		{addr: "127.0.0.1:6177", path: "/mcp", want: "http://127.0.0.1:6177/mcp"},
 	} {
-		got := statusEndpointURL(tc.addr)
+		got := localStatusURL(tc.addr, tc.path)
 		if got != tc.want {
-			t.Fatalf("statusEndpointURL(%q) = %q, want %q", tc.addr, got, tc.want)
+			t.Fatalf("localStatusURL(%q, %q) = %q, want %q", tc.addr, tc.path, got, tc.want)
 		}
+	}
+}
+
+func TestPublicStatusURL(t *testing.T) {
+	got := publicStatusURL("https://coggo.example.com/", "/healthz")
+	if want := "https://coggo.example.com/healthz"; got != want {
+		t.Fatalf("publicStatusURL = %q, want %q", got, want)
 	}
 }
 

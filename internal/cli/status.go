@@ -42,7 +42,9 @@ func actionStatus(ctx context.Context, cmd *cli.Command) error {
 
 	dbPath := config.ResolvedDBPath(cfg)
 	dataDir := config.DataDir(cfg)
-	endpoint := statusEndpointURL(cfg.Server.ListenAddress)
+	endpoint := localStatusURL(cfg.Server.ListenAddress, "/mcp")
+	gatewayLocal := localStatusURL(statusEnvOr("GATEWAY_LISTEN", ":8080"), "/healthz")
+	gatewayPublicBase := strings.TrimRight(os.Getenv("GATEWAY_PUBLIC_URL"), "/")
 
 	fmt.Println("Coggo status")
 	fmt.Printf("  config:   %s\n", cmd.String("config"))
@@ -56,8 +58,30 @@ func actionStatus(ctx context.Context, cmd *cli.Command) error {
 		fmt.Printf("            %s\n", httpDetail)
 	}
 
-	if pidStatus := probePidfile(); pidStatus != "" {
-		fmt.Printf("  process:  %s\n", pidStatus)
+	gatewayStatus, gatewayDetail := probeGatewayEndpoint(ctx, gatewayLocal)
+	fmt.Printf("  gateway:  %s\n", gatewayStatus)
+	fmt.Printf("            local %s\n", gatewayLocal)
+	if gatewayDetail != "" {
+		fmt.Printf("            %s\n", gatewayDetail)
+	}
+
+	if gatewayPublicBase == "" {
+		fmt.Printf("  public:   skipped\n")
+		fmt.Printf("            GATEWAY_PUBLIC_URL is not set\n")
+	} else {
+		gatewayPublic := publicStatusURL(gatewayPublicBase, "/healthz")
+		publicStatus, publicDetail := probeGatewayEndpoint(ctx, gatewayPublic)
+		fmt.Printf("  public:   %s\n", publicStatus)
+		fmt.Printf("            %s\n", gatewayPublic)
+		if publicDetail != "" {
+			fmt.Printf("            %s\n", publicDetail)
+		}
+	}
+
+	for _, name := range []string{"coggo", "gateway", "cloudflared"} {
+		if pidStatus := probePidfile(name); pidStatus != "" {
+			fmt.Printf("  process:  %-11s %s\n", name, pidStatus)
+		}
 	}
 
 	diskStatus, diskDetail := probeDisk(dbPath)
@@ -75,15 +99,36 @@ func actionStatus(ctx context.Context, cmd *cli.Command) error {
 	return nil
 }
 
-func statusEndpointURL(addr string) string {
+func localStatusURL(addr string, path string) string {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
-		return "http://" + strings.TrimRight(addr, "/") + "/mcp"
+		return "http://" + strings.TrimRight(addr, "/") + cleanStatusPath(path)
 	}
 	if host == "" || host == "localhost" {
 		host = "127.0.0.1"
 	}
-	return "http://" + net.JoinHostPort(host, port) + "/mcp"
+	return "http://" + net.JoinHostPort(host, port) + cleanStatusPath(path)
+}
+
+func publicStatusURL(base string, path string) string {
+	return strings.TrimRight(base, "/") + cleanStatusPath(path)
+}
+
+func cleanStatusPath(path string) string {
+	if path == "" {
+		return "/"
+	}
+	if strings.HasPrefix(path, "/") {
+		return path
+	}
+	return "/" + path
+}
+
+func statusEnvOr(key string, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }
 
 func probeStatusEndpoint(ctx context.Context, endpoint string) (string, string) {
@@ -110,12 +155,44 @@ func probeStatusEndpoint(ctx context.Context, endpoint string) (string, string) 
 	return "up", fmt.Sprintf("HTTP %d from /mcp", resp.StatusCode)
 }
 
-func probePidfile() string {
+func probeGatewayEndpoint(ctx context.Context, endpoint string) (string, string) {
+	status, detail := probeHTTPEndpoint(ctx, endpoint)
+	if status != "up" {
+		return status, detail
+	}
+	return "up", detail
+}
+
+func probeHTTPEndpoint(ctx context.Context, endpoint string) (string, string) {
+	reqCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "invalid", err.Error()
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "down", err.Error()
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 500 {
+		return "unhealthy", fmt.Sprintf("HTTP %d", resp.StatusCode)
+	}
+	if resp.StatusCode >= 200 && resp.StatusCode < 400 {
+		return "up", fmt.Sprintf("HTTP %d", resp.StatusCode)
+	}
+	return "unhealthy", fmt.Sprintf("HTTP %d", resp.StatusCode)
+}
+
+func probePidfile(name string) string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	path := filepath.Join(home, ".coggo", "run", "coggo.pid")
+	path := filepath.Join(home, ".coggo", "run", name+".pid")
 	b, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return "no pidfile at " + path

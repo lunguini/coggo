@@ -36,8 +36,8 @@ import (
 	"syscall"
 	"time"
 
-	mark3labsoauth "github.com/tuannvm/oauth-mcp-proxy/mark3labs"
 	oauth "github.com/tuannvm/oauth-mcp-proxy"
+	mark3labsoauth "github.com/tuannvm/oauth-mcp-proxy/mark3labs"
 	"golang.org/x/time/rate"
 )
 
@@ -113,19 +113,19 @@ func main() {
 }
 
 type config struct {
-	Listen                string
-	PublicURL             string
-	UpstreamURL           *url.URL
-	CoggoToken            string
-	GoogleClientID        string
-	GoogleClientSec       string
-	LogLevel              string
-	AllowedClientDomains  string
-	AllowedEmails         []string
-	GlobalRPS             float64
-	GlobalBurst           int
-	PerEmailRPM           float64
-	PerEmailBurst         int
+	Listen               string
+	PublicURL            string
+	UpstreamURL          *url.URL
+	CoggoToken           string
+	GoogleClientID       string
+	GoogleClientSec      string
+	LogLevel             string
+	AllowedClientDomains string
+	AllowedEmails        []string
+	GlobalRPS            float64
+	GlobalBurst          int
+	PerEmailRPM          float64
+	PerEmailBurst        int
 }
 
 func loadConfig() (*config, error) {
@@ -166,6 +166,7 @@ func loadConfig() (*config, error) {
 
 func run(cfg *config) error {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", handleHealthz)
 
 	// OAuth in proxy mode with fixed redirect: the gateway exposes the standard
 	// /.well-known + /authorize + /token endpoints that claude.ai discovers and
@@ -251,6 +252,16 @@ func run(cfg *config) error {
 	case err := <-errCh:
 		return err
 	}
+}
+
+func handleHealthz(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = w.Write([]byte("ok\n"))
 }
 
 // newReverseProxy forwards validated requests to coggo, replacing the incoming
