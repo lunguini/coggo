@@ -45,6 +45,7 @@ func App() *cli.Command {
 		Commands: []*cli.Command{
 			cmdInit(),
 			cmdServe(),
+			cmdStatus(),
 			cmdToday(),
 			cmdPeer(),
 			cmdType(),
