@@ -7,9 +7,7 @@
 #      termux-services, termux-api, openssh, cloudflared).
 #   3. Builds and installs coggo + coggo-oauth-gateway via make install-all.
 #   4. Installs Go-built binaries to $GOBIN (or go env GOPATH/bin).
-#   5. Drops an env-file template at <repo>/.env you must fill in. Same
-#      filename and shape as the laptop's repo-root .env, so secrets follow
-#      one convention across machines.
+#   5. Drops an env-file template at ~/.coggo/env you must fill in.
 #   6. Installs a Termux:Boot launcher at ~/.termux/boot/30-coggo so the
 #      whole stack comes back up after reboot.
 #   7. Prints next steps (Cloudflare Tunnel setup, fill env, reboot).
@@ -50,6 +48,14 @@ resolve_go_bin_dir() {
         dir="$(go env GOPATH)/bin"
     fi
     printf '%s\n' "$dir"
+}
+
+detect_shell_rc() {
+    case "$(basename "${SHELL:-bash}")" in
+        zsh) printf '%s\n' "$HOME/.zshrc" ;;
+        bash|sh) printf '%s\n' "$HOME/.bashrc" ;;
+        *) printf '%s\n' "$HOME/.profile" ;;
+    esac
 }
 
 # --- 2. packages -------------------------------------------------------------
@@ -94,11 +100,11 @@ fi
 # --- 4. config + env template -----------------------------------------------
 
 mkdir -p "$HOME/.coggo"
-# .env lives at the repo root — same convention as the laptop. Gitignored,
-# chmod 600. termux-update.sh and `make serve-public` both read from here.
-# Single source of truth for the template: the committed .env.example.
-ENV_FILE="$REPO_ROOT/.env"
+# Termux runtime env lives beside logs/run state, outside the source tree.
+# Single source of truth for the template remains the committed .env.example.
+ENV_FILE="$HOME/.coggo/env"
 ENV_EXAMPLE="$REPO_ROOT/.env.example"
+SHELL_RC="$(detect_shell_rc)"
 if [ ! -f "$ENV_FILE" ]; then
     if [ ! -f "$ENV_EXAMPLE" ]; then
         echo "missing $ENV_EXAMPLE — repo is incomplete" >&2
@@ -137,8 +143,7 @@ PREFIX="/data/data/com.termux/files/usr"
 HOME_DIR="/data/data/com.termux/files/home"
 LOG_DIR="$HOME_DIR/.coggo/logs"
 RUN_DIR="$HOME_DIR/.coggo/run"
-# .env at the repo root — same convention the laptop uses.
-ENV_FILE="$HOME_DIR/coggo/.env"
+ENV_FILE="$HOME_DIR/.coggo/env"
 
 mkdir -p "$LOG_DIR" "$RUN_DIR"
 
@@ -185,7 +190,7 @@ start_if_down() {
     fi
 }
 
-# 1. Coggo + gateway. Sourcing .env is enough — every variable in it is
+# 1. Coggo + gateway. Sourcing the env file is enough — every variable in it is
 #    declared with `export`, so children inherit them without `set -a`.
 if [ ! -f "$ENV_FILE" ]; then
     log "missing $ENV_FILE — refusing to start gateway"
@@ -199,13 +204,13 @@ export PATH="$APP_BIN_DIR:$PREFIX/bin:${PATH:-}"
 
 start_if_down coggo "$APP_BIN_DIR/coggo" serve
 
-# Litestream — only if all four R2_* values are set in .env.
+# Litestream — only if all four R2_* values are set in the env file.
 if [ -n "${R2_ACCESS_KEY_ID:-}" ] && [ -n "${R2_SECRET_ACCESS_KEY:-}" ] \
    && [ -n "${R2_ACCOUNT_ID:-}" ] && [ -n "${R2_BUCKET:-}" ]; then
     start_if_down litestream "$APP_BIN_DIR/litestream" replicate \
         -config "$HOME_DIR/coggo/scripts/litestream.yml"
 else
-    log "litestream skipped — R2_* vars not all set in .env (coggo will run without replication)"
+    log "litestream skipped — R2_* vars not all set in env file (coggo will run without replication)"
 fi
 
 # Wait for coggo's MCP port before launching the gateway.
@@ -246,18 +251,18 @@ CF_CREDS=$(ls "$HOME/.cloudflared/"*.json 2>/dev/null | head -1)
 
 if [ -n "$CF_CREDS" ]; then
     TUNNEL_UUID="$(basename "$CF_CREDS" .json)"
-    # Read CLOUDFLARE_TUNNEL_NAME + GATEWAY_PORT from .env if set.
+    # Read CLOUDFLARE_TUNNEL_NAME + GATEWAY_PORT from the Termux env file if set.
     # shellcheck disable=SC1090
-    [ -f "$REPO_ROOT/.env" ] && . "$REPO_ROOT/.env"
+    [ -f "$ENV_FILE" ] && . "$ENV_FILE"
     TUNNEL_NAME="${CLOUDFLARE_TUNNEL_NAME:-coggo}"
     GW_PORT="${GATEWAY_PORT:-8080}"
 
     if [ ! -f "$CF_CONFIG" ]; then
         echo
         echo "==> generating $CF_CONFIG"
-        # GATEWAY_PUBLIC_URL must already be set in .env — prompt if missing.
+        # GATEWAY_PUBLIC_URL must already be set in the env file — prompt if missing.
         if [ -z "${GATEWAY_PUBLIC_URL:-}" ]; then
-            echo "    WARNING: GATEWAY_PUBLIC_URL is not set in .env"
+            echo "    WARNING: GATEWAY_PUBLIC_URL is not set in $ENV_FILE"
             echo "    Edit $CF_CONFIG after filling that in."
             CF_HOSTNAME="<your-hostname>"
         else
@@ -316,6 +321,9 @@ Next steps (do these once, in order):
      COGGO_DB_PATH, R2_ACCOUNT_ID, R2_BUCKET,
      R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
    OAUTH_ALLOWED_EMAILS is REQUIRED. Empty = everyone is rejected.
+   Optional: make these values available in your interactive shell:
+     printf '\n# Coggo\n[ -f "$ENV_FILE" ] && . "$ENV_FILE"\n' >> "$SHELL_RC"
+     . "$SHELL_RC"
 
 3. Restore an existing Coggo DB from R2 before first boot (skip for a fresh DB):
      source $ENV_FILE

@@ -23,6 +23,8 @@ func TestTermuxDeployUsesCloudflareOnly(t *testing.T) {
 		"clang",
 		"install -m 0755 ./coggo",
 		"install -m 0755 ./coggo-oauth-gateway",
+		"ENV_FILE=\"$REPO_ROOT/.env\"",
+		"ENV_FILE=\"$HOME_DIR/coggo/.env\"",
 	} {
 		if strings.Contains(script, forbidden) {
 			t.Fatalf("termux-deploy.sh must not depend on %q", forbidden)
@@ -39,6 +41,8 @@ func TestTermuxDeployUsesCloudflareOnly(t *testing.T) {
 		"start_if_down coggo \"$APP_BIN_DIR/coggo\" serve",
 		"start_if_down gateway \"$APP_BIN_DIR/coggo-oauth-gateway\"",
 		"start_if_down litestream \"$APP_BIN_DIR/litestream\" replicate",
+		"ENV_FILE=\"$HOME/.coggo/env\"",
+		"ENV_FILE=\"$HOME_DIR/.coggo/env\"",
 	} {
 		if !strings.Contains(script, required) {
 			t.Fatalf("termux-deploy.sh must include %q", required)
