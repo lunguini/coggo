@@ -8,9 +8,9 @@
 #   3. Builds and installs coggo + coggo-oauth-gateway via make install-all.
 #   4. Installs Go-built binaries to $GOBIN (or go env GOPATH/bin).
 #   5. Drops an env-file template at ~/.coggo/env you must fill in.
-#   6. Installs a Termux:Boot launcher at ~/.termux/boot/30-coggo so the
-#      whole stack comes back up after reboot.
-#   7. Prints next steps (Cloudflare Tunnel setup, fill env, reboot).
+#   6. Installs runit services via termux-services and a Termux:Boot launcher
+#      that enables the right services after reboot.
+#   7. Prints next steps (Cloudflare Tunnel setup, fill env, service control).
 #
 # Prereqs you handle manually (one-time):
 #   - Install Termux from F-Droid (NOT Play Store — Play version is stale).
@@ -118,7 +118,76 @@ else
     echo "==> env file already exists at $ENV_FILE (leaving it alone)"
 fi
 
-# --- 5. boot launcher --------------------------------------------------------
+# --- 5. runit services + boot launcher ---------------------------------------
+
+SERVICE_DIR="$PREFIX/var/service"
+SERVICE_LOG_DIR="$PREFIX/var/log/sv"
+SVLOGGER="$PREFIX/share/termux-services/svlogger"
+
+mkdir -p "$SERVICE_DIR" "$SERVICE_LOG_DIR"
+
+install_runit_service() {
+    local name="$1"
+    local command_block="$2"
+    local svc_dir="$SERVICE_DIR/$name"
+    mkdir -p "$svc_dir/log" "$SERVICE_LOG_DIR/$name"
+    cat > "$svc_dir/run" <<SERVICE_EOF
+#!/data/data/com.termux/files/usr/bin/bash
+set -euo pipefail
+
+PREFIX="/data/data/com.termux/files/usr"
+HOME_DIR="/data/data/com.termux/files/home"
+ENV_FILE="\$HOME_DIR/.coggo/env"
+
+resolve_app_bin_dir() {
+    local dir
+    dir="\${GOBIN:-}"
+    if [ -z "\$dir" ] && [ -x "\$PREFIX/bin/go" ]; then
+        dir="\$("\$PREFIX/bin/go" env GOBIN 2>/dev/null || true)"
+    fi
+    if [ -z "\$dir" ] && [ -x "\$PREFIX/bin/go" ]; then
+        dir="\$("\$PREFIX/bin/go" env GOPATH)/bin"
+    fi
+    if [ -z "\$dir" ]; then
+        dir="\$HOME_DIR/go/bin"
+    fi
+    printf '%s\n' "\$dir"
+}
+
+if [ ! -f "\$ENV_FILE" ]; then
+    echo "missing \$ENV_FILE"
+    sleep 30
+    exit 1
+fi
+
+# shellcheck disable=SC1090
+. "\$ENV_FILE"
+
+APP_BIN_DIR="\$(resolve_app_bin_dir)"
+export PATH="\$APP_BIN_DIR:\$PREFIX/bin:\${PATH:-}"
+
+$command_block
+SERVICE_EOF
+    chmod 700 "$svc_dir/run"
+    if [ -x "$SVLOGGER" ]; then
+        ln -sf "$SVLOGGER" "$svc_dir/log/run"
+    else
+        cat > "$svc_dir/log/run" <<'LOG_EOF'
+#!/data/data/com.termux/files/usr/bin/sh
+exec cat
+LOG_EOF
+        chmod 700 "$svc_dir/log/run"
+    fi
+    # Services stay disabled until Termux:Boot or the operator enables them
+    # after env/identity/DB restore is complete.
+    touch "$svc_dir/down"
+}
+
+echo "==> installing runit services under $SERVICE_DIR"
+install_runit_service "coggo" 'exec "$APP_BIN_DIR/coggo" serve'
+install_runit_service "coggo-gateway" 'exec "$APP_BIN_DIR/coggo-oauth-gateway"'
+install_runit_service "coggo-litestream" 'exec "$APP_BIN_DIR/litestream" replicate -config "$HOME_DIR/coggo/scripts/litestream.yml"'
+install_runit_service "coggo-cloudflared" 'exec "$PREFIX/bin/cloudflared" tunnel run "$CLOUDFLARE_TUNNEL_NAME"'
 
 BOOT_DIR="$HOME/.termux/boot"
 mkdir -p "$BOOT_DIR"
@@ -129,118 +198,96 @@ echo "==> installing boot launcher at $BOOT_SCRIPT"
 # shell environment). Logs go to ~/.coggo/logs/.
 cat > "$BOOT_SCRIPT" <<'BOOT_EOF'
 #!/data/data/com.termux/files/usr/bin/bash
-# Termux:Boot launcher for Coggo. Brings up:
-#   - termux-wake-lock (prevents Android from killing the process tree)
-#   - coggo serve
-#   - coggo-oauth-gateway
-#   - cloudflared tunnel pointing at the gateway port
-#
-# Re-running is safe: each step checks for an existing PID first.
+# Termux:Boot launcher for Coggo. Starts termux-services' runit supervisor and
+# enables the Coggo service set whose env prerequisites are present.
 
 set -u
 
 PREFIX="/data/data/com.termux/files/usr"
 HOME_DIR="/data/data/com.termux/files/home"
 LOG_DIR="$HOME_DIR/.coggo/logs"
-RUN_DIR="$HOME_DIR/.coggo/run"
 ENV_FILE="$HOME_DIR/.coggo/env"
+SERVICE_DIR="$PREFIX/var/service"
 
-mkdir -p "$LOG_DIR" "$RUN_DIR"
+mkdir -p "$LOG_DIR"
 
 ts() { date '+%Y-%m-%dT%H:%M:%S'; }
 log() { echo "[$(ts)] $*" >> "$LOG_DIR/boot.log"; }
 
-resolve_app_bin_dir() {
-    local dir
-    dir="${GOBIN:-}"
-    if [ -z "$dir" ] && [ -x "$PREFIX/bin/go" ]; then
-        dir="$("$PREFIX/bin/go" env GOBIN 2>/dev/null || true)"
-    fi
-    if [ -z "$dir" ] && [ -x "$PREFIX/bin/go" ]; then
-        dir="$("$PREFIX/bin/go" env GOPATH)/bin"
-    fi
-    if [ -z "$dir" ]; then
-        dir="$HOME_DIR/go/bin"
-    fi
-    printf '%s\n' "$dir"
-}
+export PATH="$PREFIX/bin:${PATH:-}"
 
-APP_BIN_DIR="$(resolve_app_bin_dir)"
-export PATH="$APP_BIN_DIR:$PREFIX/bin:${PATH:-}"
-log "app bin dir: $APP_BIN_DIR"
-
-# 0. Wake lock so Android doesn't suspend us.
 "$PREFIX/bin/termux-wake-lock" || log "termux-wake-lock failed (Termux:API not installed?)"
 
-# Helper: start $1 with cmd "$2 ..." if not already running. Writes pidfile.
-start_if_down() {
-    local name="$1"; shift
-    local pidfile="$RUN_DIR/$name.pid"
-    if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
-        log "$name already running (pid $(cat "$pidfile"))"
-        return 0
-    fi
-    log "starting $name: $*"
-    setsid nohup "$@" >> "$LOG_DIR/$name.log" 2>&1 &
-    echo $! > "$pidfile"
-    sleep 1
-    if ! kill -0 "$(cat "$pidfile")" 2>/dev/null; then
-        log "$name failed to stay up — see $LOG_DIR/$name.log"
-        return 1
-    fi
-}
+if [ -f "$PREFIX/etc/profile.d/start-services.sh" ]; then
+    # shellcheck disable=SC1090
+    . "$PREFIX/etc/profile.d/start-services.sh"
+else
+    log "missing start-services.sh — pkg install termux-services"
+fi
 
-# 1. Coggo + gateway. Sourcing the env file is enough — every variable in it is
-#    declared with `export`, so children inherit them without `set -a`.
 if [ ! -f "$ENV_FILE" ]; then
-    log "missing $ENV_FILE — refusing to start gateway"
+    log "missing $ENV_FILE — refusing to enable Coggo services"
     exit 1
 fi
 # shellcheck disable=SC1090
 . "$ENV_FILE"
 
-APP_BIN_DIR="$(resolve_app_bin_dir)"
-export PATH="$APP_BIN_DIR:$PREFIX/bin:${PATH:-}"
+enable_service() {
+    local name="$1"
+    if [ ! -d "$SERVICE_DIR/$name" ]; then
+        log "service $name is missing under $SERVICE_DIR"
+        return 1
+    fi
+    log "enabling $name"
+    if command -v sv-enable >/dev/null 2>&1; then
+        sv-enable "$name" >> "$LOG_DIR/boot.log" 2>&1 || sv up "$name" >> "$LOG_DIR/boot.log" 2>&1 || true
+    else
+        rm -f "$SERVICE_DIR/$name/down"
+        sv up "$name" >> "$LOG_DIR/boot.log" 2>&1 || true
+    fi
+}
 
-start_if_down coggo "$APP_BIN_DIR/coggo" serve
+disable_service() {
+    local name="$1"
+    if [ ! -d "$SERVICE_DIR/$name" ]; then
+        return 0
+    fi
+    log "disabling $name"
+    if command -v sv-disable >/dev/null 2>&1; then
+        sv-disable "$name" >> "$LOG_DIR/boot.log" 2>&1 || true
+    else
+        touch "$SERVICE_DIR/$name/down"
+        sv down "$name" >> "$LOG_DIR/boot.log" 2>&1 || true
+    fi
+}
 
-# Litestream — only if all four R2_* values are set in the env file.
+enable_service coggo
+
+if [ -n "${COGGO_TOKEN:-}" ] && [ -n "${GOOGLE_CLIENT_ID:-}" ] \
+   && [ -n "${GOOGLE_CLIENT_SECRET:-}" ] && [ -n "${GATEWAY_PUBLIC_URL:-}" ] \
+   && [ -n "${OAUTH_ALLOWED_EMAILS:-}" ]; then
+    enable_service coggo-gateway
+else
+    disable_service coggo-gateway
+    log "coggo-gateway disabled — gateway env vars are incomplete"
+fi
+
 if [ -n "${R2_ACCESS_KEY_ID:-}" ] && [ -n "${R2_SECRET_ACCESS_KEY:-}" ] \
    && [ -n "${R2_ACCOUNT_ID:-}" ] && [ -n "${R2_BUCKET:-}" ]; then
-    start_if_down litestream "$APP_BIN_DIR/litestream" replicate \
-        -config "$HOME_DIR/coggo/scripts/litestream.yml"
+    enable_service coggo-litestream
 else
-    log "litestream skipped — R2_* vars not all set in env file (coggo will run without replication)"
+    disable_service coggo-litestream
+    log "coggo-litestream disabled — R2_* vars are incomplete"
 fi
 
-# Wait for coggo's MCP port before launching the gateway.
-COGGO_PORT="${COGGO_PORT:-6177}"
-for _ in $(seq 1 15); do
-    if "$PREFIX/bin/curl" -s --max-time 2 -o /dev/null -w '%{http_code}' \
-        "http://localhost:$COGGO_PORT/mcp" 2>/dev/null | grep -qE '^[0-9]+$'; then
-        break
-    fi
-    sleep 1
-done
-
-start_if_down gateway "$APP_BIN_DIR/coggo-oauth-gateway"
-
-# 2. Public exposure via Cloudflare Tunnel.
-GATEWAY_PORT="${GATEWAY_PORT:-8080}"
-GATEWAY_PORT="${GATEWAY_PORT#:}"
-
-if [ -z "${CLOUDFLARE_TUNNEL_NAME:-}" ]; then
-    log "CLOUDFLARE_TUNNEL_NAME is not set — refusing to start public tunnel"
-    exit 1
+if [ -n "${CLOUDFLARE_TUNNEL_NAME:-}" ]; then
+    enable_service coggo-cloudflared
+else
+    disable_service coggo-cloudflared
+    log "coggo-cloudflared disabled — CLOUDFLARE_TUNNEL_NAME is not set"
 fi
-if [ ! -x "$PREFIX/bin/cloudflared" ]; then
-    log "cloudflared not installed — run pkg install cloudflared"
-    exit 1
-fi
-log "starting cloudflared tunnel '$CLOUDFLARE_TUNNEL_NAME'"
-start_if_down cloudflared "$PREFIX/bin/cloudflared" tunnel run "$CLOUDFLARE_TUNNEL_NAME"
 
-log "boot sequence complete"
+log "service enablement complete"
 BOOT_EOF
 chmod 700 "$BOOT_SCRIPT"
 
@@ -367,15 +414,25 @@ Next steps (do these once, in order):
 5. Mint a Coggo bearer token, then add the printed secret to COGGO_TOKEN in $ENV_FILE:
      $APP_BIN_DIR/coggo token create --all --label termux-gateway
 
-6. Run the boot script once to bring everything up now (or reboot):
+6. Run the boot script once to enable configured services now (or reboot):
      ~/.termux/boot/30-coggo
-     tail -f ~/.coggo/logs/*.log
+     sv status coggo
+     sv status coggo-gateway
+     sv status coggo-litestream
+     sv status coggo-cloudflared
 
 7. In claude.ai (or ChatGPT) custom connector, point at:
      \$GATEWAY_PUBLIC_URL/mcp
 
-Logs: ~/.coggo/logs/   PIDs: ~/.coggo/run/
+Logs:
+   ~/.coggo/logs/boot.log
+   $PREFIX/var/log/sv/<service>/current
 
-To stop everything:
-   for f in ~/.coggo/run/*.pid; do kill "\$(cat \$f)" 2>/dev/null; done
+Service controls:
+   sv status coggo
+   sv restart coggo
+   sv restart coggo-gateway
+   sv restart coggo-litestream
+   sv restart coggo-cloudflared
+   sv down coggo-gateway
 EOF

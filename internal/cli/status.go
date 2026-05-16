@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -79,9 +80,11 @@ func actionStatus(ctx context.Context, cmd *cli.Command) error {
 		}
 	}
 
-	for _, name := range []string{"coggo", "gateway", "cloudflared"} {
-		if pidStatus := probePidfile(name); pidStatus != "" {
-			fmt.Printf("  process:  %-11s %s\n", name, pidStatus)
+	if !printRunitServiceStatus() {
+		for _, name := range []string{"coggo", "gateway", "cloudflared"} {
+			if pidStatus := probePidfile(name); pidStatus != "" {
+				fmt.Printf("  process:  %-11s %s\n", name, pidStatus)
+			}
 		}
 	}
 
@@ -232,6 +235,47 @@ func probeHTTPEndpoint(ctx context.Context, endpoint string) (string, string) {
 		return "up", fmt.Sprintf("HTTP %d", resp.StatusCode)
 	}
 	return "unhealthy", fmt.Sprintf("HTTP %d", resp.StatusCode)
+}
+
+func printRunitServiceStatus() bool {
+	serviceNames := []string{"coggo", "coggo-gateway", "coggo-litestream", "coggo-cloudflared"}
+	printed := false
+	for _, name := range serviceNames {
+		if status := probeRunitService(name); status != "" {
+			fmt.Printf("  service:  %-18s %s\n", name, status)
+			printed = true
+		}
+	}
+	return printed
+}
+
+func probeRunitService(name string) string {
+	prefix := os.Getenv("PREFIX")
+	if prefix == "" {
+		return ""
+	}
+	serviceDir := filepath.Join(prefix, "var", "service", name)
+	if _, err := os.Stat(serviceDir); err != nil {
+		return ""
+	}
+	svPath, err := exec.LookPath("sv")
+	if err != nil {
+		svPath = filepath.Join(prefix, "bin", "sv")
+		if _, statErr := os.Stat(svPath); statErr != nil {
+			return "sv unavailable"
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, svPath, "status", name).CombinedOutput()
+	text := strings.TrimSpace(string(out))
+	if ctx.Err() != nil {
+		return "sv status timed out"
+	}
+	if text == "" && err != nil {
+		return err.Error()
+	}
+	return text
 }
 
 func probePidfile(name string) string {

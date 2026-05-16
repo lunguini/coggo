@@ -17,7 +17,7 @@ import (
 var Version = "0.1.0-dev"
 
 // App returns the root cli.Command. Wired with global flags (--config, --peer)
-// and all subcommands. The default action (no subcommand) is `serve`.
+// and all subcommands. Running with no subcommand is `serve`.
 func App() *cli.Command {
 	root := &cli.Command{
 		Name:    "coggo",
@@ -41,7 +41,10 @@ func App() *cli.Command {
 			},
 		},
 		Before: beforeApp,
-		Action: actionServe, // `coggo` with no args = `coggo serve`
+		Action: actionRoot,
+		ExitErrHandler: func(context.Context, *cli.Command, error) {
+			// main owns user-facing error printing and process exit.
+		},
 		Commands: []*cli.Command{
 			cmdInit(),
 			cmdServe(),
@@ -63,6 +66,13 @@ func App() *cli.Command {
 		},
 	}
 	return root
+}
+
+func actionRoot(ctx context.Context, cmd *cli.Command) error {
+	if cmd.Args().Present() {
+		return cli.Exit(fmt.Sprintf("Error: unknown command %q\nRun `coggo --help` to see available commands.", cmd.Args().First()), 2)
+	}
+	return actionServe(ctx, cmd)
 }
 
 // beforeApp configures slog from the loaded config's logging level.
