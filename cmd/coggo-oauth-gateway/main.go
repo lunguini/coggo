@@ -73,6 +73,8 @@ Optional:
                            unset or empty, every request is rejected. Funnel
                            is a public surface — without this, any Google
                            account on the internet could authenticate.
+  OAUTH_STATE_SECRET       Stable secret used to sign OAuth proxy state.
+                           Keep this persistent across gateway restarts.
 
 Rate limiting (all optional, sane defaults):
   RATE_GLOBAL_RPS          Tokens per second across the whole gateway
@@ -121,6 +123,7 @@ type config struct {
 	CoggoToken           string
 	GoogleClientID       string
 	GoogleClientSec      string
+	OAuthStateSecret     string
 	LogLevel             string
 	AllowedClientDomains string
 	AllowedEmails        []string
@@ -137,6 +140,7 @@ func loadConfig() (*config, error) {
 		CoggoToken:           os.Getenv("COGGO_TOKEN"),
 		GoogleClientID:       os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSec:      os.Getenv("GOOGLE_CLIENT_SECRET"),
+		OAuthStateSecret:     envOr("OAUTH_STATE_SECRET", os.Getenv("JWT_SECRET")),
 		LogLevel:             envOr("COGGO_LOG_LEVEL", "info"),
 		AllowedClientDomains: envOr("OAUTH_ALLOWED_CLIENT_DOMAINS", "claude.ai,claude.com"),
 		AllowedEmails:        splitCSV(os.Getenv("OAUTH_ALLOWED_EMAILS")),
@@ -174,6 +178,7 @@ func run(cfg *config) error {
 		"public", cfg.PublicURL,
 		"upstream", cfg.UpstreamURL.String(),
 		"coggo_token_fingerprint", tokenFingerprint(cfg.CoggoToken),
+		"oauth_state_secret_configured", cfg.OAuthStateSecret != "",
 		"allowed_client_domains", cfg.AllowedClientDomains,
 		"allowed_email_count", len(cfg.AllowedEmails))
 
@@ -192,6 +197,7 @@ func run(cfg *config) error {
 		Audience:                     cfg.GoogleClientID, // Google requires audience == client_id
 		ClientID:                     cfg.GoogleClientID,
 		ClientSecret:                 cfg.GoogleClientSec,
+		JWTSecret:                    []byte(cfg.OAuthStateSecret),
 		ServerURL:                    cfg.PublicURL,
 		FixedRedirectURI:             cfg.PublicURL + "/oauth/callback",
 		AllowedClientRedirectDomains: cfg.AllowedClientDomains,

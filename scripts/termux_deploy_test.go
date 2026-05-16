@@ -44,6 +44,8 @@ func TestTermuxDeployUsesCloudflareOnly(t *testing.T) {
 		"APP_BIN_DIR=",
 		"ENV_FILE=\"$HOME/.coggo/env\"",
 		"ENV_FILE=\"$HOME_DIR/.coggo/env\"",
+		"ensure_oauth_state_secret",
+		"export OAUTH_STATE_SECRET='%s'",
 		"SERVICE_DIR=\"$PREFIX/var/service\"",
 		"exec 2>&1",
 		"exec svlogd -tt \"$SERVICE_LOG_DIR/$name\"",

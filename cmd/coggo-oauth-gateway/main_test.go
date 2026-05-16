@@ -35,3 +35,40 @@ func TestTokenFingerprintIsStableAndDoesNotExposeToken(t *testing.T) {
 		t.Fatalf("tokenFingerprint() exposed unexpected value %q", got)
 	}
 }
+
+func TestLoadConfigReadsStableOAuthStateSecret(t *testing.T) {
+	t.Setenv("COGGO_TOKEN", "coggo-secret")
+	t.Setenv("GOOGLE_CLIENT_ID", "google-client")
+	t.Setenv("GOOGLE_CLIENT_SECRET", "google-secret")
+	t.Setenv("GATEWAY_PUBLIC_URL", "https://coggo.example.com/")
+	t.Setenv("OAUTH_STATE_SECRET", "stable-oauth-state-secret")
+	t.Setenv("JWT_SECRET", "legacy-secret")
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.PublicURL != "https://coggo.example.com" {
+		t.Fatalf("PublicURL = %q", cfg.PublicURL)
+	}
+	if cfg.OAuthStateSecret != "stable-oauth-state-secret" {
+		t.Fatalf("OAuthStateSecret = %q, want OAUTH_STATE_SECRET", cfg.OAuthStateSecret)
+	}
+}
+
+func TestLoadConfigFallsBackToJWTSecret(t *testing.T) {
+	t.Setenv("COGGO_TOKEN", "coggo-secret")
+	t.Setenv("GOOGLE_CLIENT_ID", "google-client")
+	t.Setenv("GOOGLE_CLIENT_SECRET", "google-secret")
+	t.Setenv("GATEWAY_PUBLIC_URL", "https://coggo.example.com")
+	t.Setenv("JWT_SECRET", "legacy-secret")
+	t.Setenv("OAUTH_STATE_SECRET", "")
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.OAuthStateSecret != "legacy-secret" {
+		t.Fatalf("OAuthStateSecret = %q, want JWT_SECRET fallback", cfg.OAuthStateSecret)
+	}
+}

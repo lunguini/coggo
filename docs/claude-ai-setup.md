@@ -81,9 +81,12 @@ export COGGO_TOKEN='<the secret you copied in step 2>'
 export GOOGLE_CLIENT_ID='<id>.apps.googleusercontent.com'
 export GOOGLE_CLIENT_SECRET='GOCSPX-...'
 export GATEWAY_PUBLIC_URL='https://coggo.example.com'
+export OAUTH_STATE_SECRET='<stable random secret>'
 export CLOUDFLARE_TUNNEL_NAME='coggo'
 export OAUTH_ALLOWED_EMAILS='you@example.com'
 ```
+
+`OAUTH_STATE_SECRET` signs OAuth proxy state. Keep it stable across gateway restarts and updates; the Termux deploy script generates it automatically in `~/.coggo/env`.
 
 Then start the boot launcher:
 

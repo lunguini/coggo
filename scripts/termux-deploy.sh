@@ -118,6 +118,29 @@ else
     echo "==> env file already exists at $ENV_FILE (leaving it alone)"
 fi
 
+oauth_state_secret_value() {
+    sed -n 's/^[[:space:]]*export[[:space:]]\{1,\}OAUTH_STATE_SECRET=//p' "$ENV_FILE" \
+        | tail -n 1 \
+        | sed "s/^['\"]//; s/['\"]$//"
+}
+
+ensure_oauth_state_secret() {
+    local secret
+    if [ -n "$(oauth_state_secret_value)" ]; then
+        return
+    fi
+    secret="$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | base64 | tr -d '\n')"
+    {
+        printf '\n# Stable OAuth state signing secret for coggo-oauth-gateway.\n'
+        printf '# Keep this value persistent across gateway restarts/updates.\n'
+        printf "export OAUTH_STATE_SECRET='%s'\n" "$secret"
+    } >> "$ENV_FILE"
+    chmod 600 "$ENV_FILE"
+    echo "==> generated persistent OAUTH_STATE_SECRET in $ENV_FILE"
+}
+
+ensure_oauth_state_secret
+
 # --- 5. runit services + boot launcher ---------------------------------------
 
 SERVICE_DIR="$PREFIX/var/service"
@@ -389,6 +412,8 @@ Next steps (do these once, in order):
      COGGO_DB_PATH, R2_ACCOUNT_ID, R2_BUCKET,
      R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
    OAUTH_ALLOWED_EMAILS is REQUIRED. Empty = everyone is rejected.
+   OAUTH_STATE_SECRET was generated automatically. Keep it unchanged across
+   gateway restarts/updates so OAuth proxy state remains stable.
    Optional: make these values available in your interactive shell:
      printf '\n# Coggo\n[ -f "$ENV_FILE" ] && . "$ENV_FILE"\n' >> "$SHELL_RC"
      . "$SHELL_RC"
