@@ -23,6 +23,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -167,6 +169,13 @@ func loadConfig() (*config, error) {
 func run(cfg *config) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", handleHealthz)
+	slog.Debug("gateway config loaded",
+		"listen", cfg.Listen,
+		"public", cfg.PublicURL,
+		"upstream", cfg.UpstreamURL.String(),
+		"coggo_token_fingerprint", tokenFingerprint(cfg.CoggoToken),
+		"allowed_client_domains", cfg.AllowedClientDomains,
+		"allowed_email_count", len(cfg.AllowedEmails))
 
 	// OAuth in proxy mode with fixed redirect: the gateway exposes the standard
 	// /.well-known + /authorize + /token endpoints that claude.ai discovers and
@@ -269,11 +278,17 @@ func handleHealthz(w http.ResponseWriter, r *http.Request) {
 // token — the OAuth identity stays at the gateway boundary, which is the right
 // place for it.
 func newReverseProxy(upstream *url.URL, coggoToken string) http.Handler {
+	tokenFP := tokenFingerprint(coggoToken)
 	rp := &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(upstream)
 			pr.SetXForwarded()
 			pr.Out.Header.Set("Authorization", "Bearer "+coggoToken)
+			slog.Debug("proxying mcp request",
+				"method", pr.In.Method,
+				"path", pr.In.URL.Path,
+				"upstream", pr.Out.URL.String(),
+				"outgoing_token_fingerprint", tokenFP)
 			// Keep Accept and Content-Type as the client sent them; MCP streamable
 			// transport uses them to choose JSON vs SSE framing.
 		},
@@ -283,6 +298,11 @@ func newReverseProxy(upstream *url.URL, coggoToken string) http.Handler {
 		},
 	}
 	return rp
+}
+
+func tokenFingerprint(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])[:12]
 }
 
 func configureLogger(level string) {
