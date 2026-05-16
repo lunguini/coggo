@@ -122,7 +122,6 @@ fi
 
 SERVICE_DIR="$PREFIX/var/service"
 SERVICE_LOG_DIR="$PREFIX/var/log/sv"
-SVLOGGER="$PREFIX/share/termux-services/svlogger"
 
 mkdir -p "$SERVICE_DIR" "$SERVICE_LOG_DIR"
 
@@ -166,18 +165,15 @@ fi
 APP_BIN_DIR="\$(resolve_app_bin_dir)"
 export PATH="\$APP_BIN_DIR:\$PREFIX/bin:\${PATH:-}"
 
+exec 2>&1
 $command_block
 SERVICE_EOF
     chmod 700 "$svc_dir/run"
-    if [ -x "$SVLOGGER" ]; then
-        ln -sf "$SVLOGGER" "$svc_dir/log/run"
-    else
-        cat > "$svc_dir/log/run" <<'LOG_EOF'
+    cat > "$svc_dir/log/run" <<LOG_EOF
 #!/data/data/com.termux/files/usr/bin/sh
-exec cat
+exec svlogd -tt "$SERVICE_LOG_DIR/$name"
 LOG_EOF
-        chmod 700 "$svc_dir/log/run"
-    fi
+    chmod 700 "$svc_dir/log/run"
     # Services stay disabled until Termux:Boot or the operator enables them
     # after env/identity/DB restore is complete.
     touch "$svc_dir/down"

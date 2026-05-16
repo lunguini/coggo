@@ -30,6 +30,7 @@ func TestTermuxDeployUsesCloudflareOnly(t *testing.T) {
 		"setsid nohup",
 		"RUN_DIR=\"$HOME_DIR/.coggo/run\"",
 		"for f in ~/.coggo/run/*.pid",
+		"svlogger",
 	} {
 		if strings.Contains(script, forbidden) {
 			t.Fatalf("termux-deploy.sh must not depend on %q", forbidden)
@@ -44,6 +45,8 @@ func TestTermuxDeployUsesCloudflareOnly(t *testing.T) {
 		"ENV_FILE=\"$HOME/.coggo/env\"",
 		"ENV_FILE=\"$HOME_DIR/.coggo/env\"",
 		"SERVICE_DIR=\"$PREFIX/var/service\"",
+		"exec 2>&1",
+		"exec svlogd -tt \"$SERVICE_LOG_DIR/$name\"",
 		"install_runit_service \"coggo\" 'exec \"$APP_BIN_DIR/coggo\" serve'",
 		"install_runit_service \"coggo-gateway\" 'exec \"$APP_BIN_DIR/coggo-oauth-gateway\"'",
 		"install_runit_service \"coggo-litestream\" 'exec \"$APP_BIN_DIR/litestream\" replicate",
