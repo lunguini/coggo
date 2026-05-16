@@ -29,6 +29,26 @@ func TestPublicStatusURL(t *testing.T) {
 	}
 }
 
+func TestParseExportedEnv(t *testing.T) {
+	env := strings.NewReader(`
+# comment
+export GATEWAY_PUBLIC_URL=https://coggo.example.com
+GATEWAY_LISTEN=":9090"
+EMPTY=
+`)
+
+	values := parseExportedEnv(env)
+	if got := values["GATEWAY_PUBLIC_URL"]; got != "https://coggo.example.com" {
+		t.Fatalf("GATEWAY_PUBLIC_URL = %q", got)
+	}
+	if got := values["GATEWAY_LISTEN"]; got != ":9090" {
+		t.Fatalf("GATEWAY_LISTEN = %q", got)
+	}
+	if _, ok := values["EMPTY"]; ok {
+		t.Fatal("empty values should be ignored")
+	}
+}
+
 func TestParseMemAvailable(t *testing.T) {
 	meminfo := strings.NewReader("MemTotal:       8024000 kB\nMemAvailable:   524288 kB\n")
 	got, ok := parseMemAvailable(meminfo)

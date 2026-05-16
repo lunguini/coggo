@@ -43,8 +43,9 @@ func actionStatus(ctx context.Context, cmd *cli.Command) error {
 	dbPath := config.ResolvedDBPath(cfg)
 	dataDir := config.DataDir(cfg)
 	endpoint := localStatusURL(cfg.Server.ListenAddress, "/mcp")
-	gatewayLocal := localStatusURL(statusEnvOr("GATEWAY_LISTEN", ":8080"), "/healthz")
-	gatewayPublicBase := strings.TrimRight(os.Getenv("GATEWAY_PUBLIC_URL"), "/")
+	statusEnv := loadStatusEnv()
+	gatewayLocal := localStatusURL(statusEnv.envOr("GATEWAY_LISTEN", ":8080"), "/healthz")
+	gatewayPublicBase := strings.TrimRight(statusEnv.envOr("GATEWAY_PUBLIC_URL", ""), "/")
 
 	fmt.Println("Coggo status")
 	fmt.Printf("  config:   %s\n", cmd.String("config"))
@@ -124,11 +125,57 @@ func cleanStatusPath(path string) string {
 	return "/" + path
 }
 
-func statusEnvOr(key string, fallback string) string {
+type statusEnv map[string]string
+
+func loadStatusEnv() statusEnv {
+	values := statusEnv{}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return values
+	}
+	f, err := os.Open(filepath.Join(home, ".coggo", "env"))
+	if err != nil {
+		return values
+	}
+	defer f.Close()
+	for k, v := range parseExportedEnv(f) {
+		values[k] = v
+	}
+	return values
+}
+
+func (e statusEnv) envOr(key string, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
 	}
+	if v := e[key]; v != "" {
+		return v
+	}
 	return fallback
+}
+
+func parseExportedEnv(r io.Reader) map[string]string {
+	values := map[string]string{}
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		line = strings.TrimPrefix(line, "export ")
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		value = strings.Trim(value, `"'`)
+		if key == "" || value == "" {
+			continue
+		}
+		values[key] = value
+	}
+	return values
 }
 
 func probeStatusEndpoint(ctx context.Context, endpoint string) (string, string) {
