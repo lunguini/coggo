@@ -103,6 +103,9 @@ coggo peer list                  # show all peers
 coggo token create --all                 # one token for everything
 coggo token create --peer business       # peer-scoped
 coggo token create --peer business --peer personal  # multiple peers
+
+coggo backup identity export ~/coggo-peers.json  # export hosted peer private keys
+coggo backup identity import ~/coggo-peers.json  # restore hosted peer private keys
 ```
 
 ## Wiring AI clients
@@ -128,7 +131,7 @@ Drop [templates/CLAUDE.md.template](templates/CLAUDE.md.template) into your repo
 - [claude-code-setup.md](docs/claude-code-setup.md) — wiring Claude Code
 - [cloudflare-tunnel.md](docs/cloudflare-tunnel.md) — exposing Coggo on a custom domain via Cloudflare Tunnel
 - [tailscale-setup.md](docs/tailscale-setup.md) — legacy Tailscale + Funnel notes for non-Termux hosts
-- [backup.md](docs/backup.md) — continuous DB replication to Cloudflare R2 via Litestream
+- [backup.md](docs/backup.md) — DB replication to Cloudflare R2 plus identity backup
 - [skills/coggo/SKILL.md](skills/coggo/SKILL.md) — the Coggo skill for AI clients
 - [templates/CLAUDE.md.template](templates/CLAUDE.md.template) — drop-in CLAUDE.md for Claude Code repos
 

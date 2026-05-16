@@ -350,20 +350,28 @@ Next steps (do these once, in order):
      printf '\n# Coggo\n[ -f "$ENV_FILE" ] && . "$ENV_FILE"\n' >> "$SHELL_RC"
      . "$SHELL_RC"
 
-3. Restore an existing Coggo DB from R2 before first boot (skip for a fresh DB):
+3. Restore hosted peer identities before first boot (skip for a fresh Coggo):
+     # On the old host, first run:
+     #   coggo backup identity export ~/coggo-peers.json
+     # Transfer the file securely, then on Termux:
+     source $ENV_FILE
+     $APP_BIN_DIR/coggo backup identity import /path/to/coggo-peers.json
+   This file contains peer private keys. Keep the exported copy encrypted.
+
+4. Restore an existing Coggo DB from R2 before first boot (skip for a fresh DB):
      source $ENV_FILE
      mkdir -p "\$(dirname "\$COGGO_DB_PATH")"
      litestream restore -config scripts/litestream.yml -o "\$COGGO_DB_PATH" "\$COGGO_DB_PATH"
    Do this before starting the boot script so Coggo does not create an empty DB.
 
-4. Mint a Coggo bearer token, then add the printed secret to COGGO_TOKEN in $ENV_FILE:
+5. Mint a Coggo bearer token, then add the printed secret to COGGO_TOKEN in $ENV_FILE:
      $APP_BIN_DIR/coggo token create --all --label termux-gateway
 
-5. Run the boot script once to bring everything up now (or reboot):
+6. Run the boot script once to bring everything up now (or reboot):
      ~/.termux/boot/30-coggo
      tail -f ~/.coggo/logs/*.log
 
-6. In claude.ai (or ChatGPT) custom connector, point at:
+7. In claude.ai (or ChatGPT) custom connector, point at:
      \$GATEWAY_PUBLIC_URL/mcp
 
 Logs: ~/.coggo/logs/   PIDs: ~/.coggo/run/

@@ -52,6 +52,7 @@ func App() *cli.Command {
 			cmdEntity(),
 			cmdRelation(),
 			cmdToken(),
+			cmdBackup(),
 			cmdThink(),
 			cmdAliasDecision(),
 			cmdAliasGoal(),
