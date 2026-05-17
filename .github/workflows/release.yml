@@ -1,0 +1,116 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Pre-release tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check formatting
+        run: |
+          files="$(gofmt -l .)"
+          if [ -n "$files" ]; then
+            echo "$files"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Test cgo-free build path
+        run: CGO_ENABLED=0 go test ./...
+
+      - name: Check shell scripts
+        run: |
+          bash -n scripts/termux-deploy.sh
+          bash -n scripts/termux-update.sh
+
+      - name: Check script invariants
+        run: go test ./scripts -count=1
+
+      - name: Clean install smoke test
+        env:
+          GOBIN: ${{ runner.temp }}/coggo-bin
+          GOPROXY: direct
+        run: |
+          mkdir -p "$GOBIN"
+          go install "github.com/lunguini/coggo/cmd/coggo@${GITHUB_REF_NAME}"
+          "$GOBIN/coggo" version
+
+  release:
+    name: GoReleaser
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Generate CHANGELOG.md from tags
+        run: |
+          echo "# Changelog" > CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          tags=($(git tag --sort=-v:refname))
+          for i in "${!tags[@]}"; do
+            tag="${tags[$i]}"
+            echo "## ${tag}" >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            next_idx=$((i + 1))
+            if [ "$next_idx" -lt "${#tags[@]}" ]; then
+              prev="${tags[$next_idx]}"
+            else
+              prev=$(git rev-list --max-parents=0 HEAD | head -1)
+            fi
+            git log --pretty=format:"- %s" "${prev}..${tag}" >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
+          done
+
+      - name: Commit CHANGELOG.md
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          cp CHANGELOG.md /tmp/CHANGELOG.md
+          git checkout master
+          cp /tmp/CHANGELOG.md CHANGELOG.md
+          git add CHANGELOG.md
+          git diff --cached --quiet && exit 0
+          git commit -m "docs: update CHANGELOG.md for ${GITHUB_REF_NAME}"
+          git push origin master

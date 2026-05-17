@@ -1,0 +1,92 @@
+version: 2
+
+builds:
+  - id: coggo
+    main: ./cmd/coggo
+    binary: coggo
+    ldflags:
+      - -s -w -X github.com/lunguini/coggo/internal/cli.Version={{.Version}}
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - arm64
+      - amd64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    env:
+      - CGO_ENABLED=0
+
+  - id: coggo-oauth-gateway
+    main: ./cmd/coggo-oauth-gateway
+    binary: coggo-oauth-gateway
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - arm64
+      - amd64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    env:
+      - CGO_ENABLED=0
+
+archives:
+  - id: coggo
+    ids:
+      - coggo
+      - coggo-oauth-gateway
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "coggo_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  groups:
+    - title: Features
+      regexp: "^.*feat.*$"
+      order: 0
+    - title: Bug Fixes
+      regexp: "^.*fix.*$"
+      order: 1
+    - title: Documentation
+      regexp: "^.*docs.*$"
+      order: 2
+    - title: Other
+      order: 999
+  filters:
+    exclude:
+      - "^test:"
+      - "^chore:"
+
+homebrew_casks:
+  - name: coggo
+    ids:
+      - coggo
+    repository:
+      owner: lunguini
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Casks
+    homepage: "https://github.com/lunguini/coggo"
+    description: "Durable shared context for Claude Code, Codex, claude.ai, and other MCP-capable agents."
+    license: "Apache-2.0"
+    binaries:
+      - coggo
+      - coggo-oauth-gateway
+
+release:
+  github:
+    owner: lunguini
+    name: coggo
+  draft: false
+  prerelease: auto
