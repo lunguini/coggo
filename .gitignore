@@ -5,20 +5,29 @@
 *.test
 *.out
 *.log
+.claude
+
 # secrets — never commit
 .env
 .env.*
+
 # ...except the committed example template
 !.env.example
+
 .idea/
 .vscode/
+
 # local data
 *.db
 *.db-shm
 *.db-wal
+
 # personal working notes (drafts, scratch, upstream issue drafts before filing)
 /notes/
+
 # private documentation — design specs, plans, internal setup guides.
 # Kept out of the public repo until we decide what to publish.
 /.ai/
+
+# other
 adrian-coggo.json
