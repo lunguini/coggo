@@ -108,9 +108,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           cp CHANGELOG.md /tmp/CHANGELOG.md
-          git checkout master
+          git checkout main
           cp /tmp/CHANGELOG.md CHANGELOG.md
           git add CHANGELOG.md
           git diff --cached --quiet && exit 0
           git commit -m "docs: update CHANGELOG.md for ${GITHUB_REF_NAME}"
-          git push origin master
+          git push origin main

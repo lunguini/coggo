@@ -77,7 +77,7 @@ Releases follow the Gocker-style tag flow, not semantic-release:
 - The Homebrew token is expected to be provided as `HOMEBREW_TAP_TOKEN` at the
   org/repo secret level.
 - `CHANGELOG.md` is generated from Conventional Commit subjects between tags
-  and committed back to `master` by the release workflow.
+  and committed back to `main` by the release workflow.
 
 For public install docs, prefer stable tagged installs such as
 `go install github.com/lunguini/coggo/cmd/coggo@v0.1.1`; use `@latest` for the
