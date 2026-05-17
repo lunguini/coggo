@@ -1,139 +1,220 @@
+<p align="center">
+  <img src="./assets/coggo.png" alt="Coggo logo" width="180">
+</p>
+
 # Coggo
 
-Coggo is a federated synthetic intelligence — a software entity that holds state, reasons over it, and operates within explicit boundaries. It is designed for sovereignty: a user's Coggo serves the user, holds the user's data, acts on the user's authority, and produces evidence of its actions that the user can inspect and other parties can verify. The reasoning substrate is swappable; the identity, goals, decisions, and contracts are not.
+Coggo is durable shared context for AI tools: Claude Code, Codex, claude.ai, and other MCP-capable agents can read and write the same local memory instead of starting from scratch in every session.
 
-**v0.1 ships the substrate.** It stores events, entities, and relationships across one or more peers. It exposes an MCP server so AI clients — claude.ai, Claude Code, anything that speaks MCP — can query and write to Coggo. It supports cross-peer queries through an in-process federation router. It generates a structured daily briefing aggregating state across peers. The schema is open: entity and relationship types are defined as data, and new types can be added at runtime.
+## What Coggo Is Today
 
-**v0.1 does not reason, act autonomously, federate over the network, or sign events.** The reasoning loop is v0.2. Cryptographic identity is v0.3. Cross-machine federation is v0.4. Agent dispatch is v0.5. Autonomy is v0.6. Full BCPC contract enforcement is v0.7. Inter-user federation is v0.8. The substrate has the schema fields these later versions need (signatures, consent grants, contract IDs) but does not enforce them.
+Coggo v0.1 is a single-user, local-first knowledge substrate. It stores entities, relationships, and append-only events across explicit peers such as `personal`, `business`, and `coggo`. It exposes those records through an MCP server, so AI clients can query project state, record decisions, and reuse context across otherwise isolated tools.
 
-## Concepts
+Coggo does not yet reason, dispatch agents, sign events, or network-federate between Coggo instances. Current value is shared durable context and memory. The AI clients still bring their own reasoning.
 
-Coggo's mental model is small. Five building blocks; everything else is composition.
+## What Coggo Aims To Become
 
-### Peer
+Coggo is intended to grow into a federated synthetic intelligence: a software entity that holds state, reasons over it, operates inside explicit boundaries, and produces inspectable evidence of what it did. The substrate in v0.1 is the base layer for later reasoning, cryptographic provenance, network federation, and agent dispatch.
 
-**A peer is a unit of identity and sovereignty.** It has its own DID (decentralised identifier — a `did:key:...` derived from an ed25519 keypair), its own data, its own settings, its own authorization scope. A peer is what holds your stuff.
+```mermaid
+flowchart LR
+  ClaudeCode[Claude Code] --> MCP["Direct MCP<br/>bearer token<br/>local or remote"]
+  Codex[Codex] --> MCP
+  ClaudeAI[claude.ai] --> Gateway["OAuth gateway<br/>for OAuth-only clients"]
+  Other[Other MCP agents] --> MCP
 
-You typically have several. The default `coggo init` creates three:
+  Gateway --> Coggo[Coggo v0.1]
+  MCP --> Coggo
 
-- **`personal`** — life domains: health, finance, social, music, family.
-- **`business`** — work, projects, clients, decisions about code.
-- **`coggo`** — Coggo's own state: settings, directives, decisions about Coggo itself.
+  Coggo --> Events[(Append-only events)]
+  Coggo --> Entities[(Entities)]
+  Coggo --> Relations[(Relationships)]
+  Coggo --> Types[(Open type system)]
 
-You can add more (`coggo peer add accountant`), rename (`coggo peer rename business work`), and define new ones for any context that warrants its own boundary — a side venture, a co-owned project, a household.
-
-**Why peers and not just folders or tags?** Three reasons:
-
-1. **Authorization is per-peer.** A bearer token can be scoped to one peer, several, or all (`--all`). When you give claude.ai access to your `business` peer, it cannot read `personal` data even if you ask it to. The boundary is enforced, not aspirational.
-2. **The federation protocol is per-peer.** Even when peers are co-located in one binary today, every cross-peer query goes through the federation router using the same protocol that v0.4 will use over the network. When you eventually run your `business` peer on a VPS and your `personal` peer on your laptop, no code changes — just transport configuration.
-3. **Sovereignty is per-peer.** When you log a `Decision` into `business`, the event is signed (eventually, in v0.3) by the `business` peer's key. That signature is portable evidence: another Coggo can verify it independently, regardless of where it came from. Identity travels with data.
-
-A peer is the closest thing Coggo has to "an account," but it is yours, lives where you choose, and federates as a peer rather than reporting to a central platform.
-
-### Entity
-
-**An entity is a thing.** A project, a decision, a goal, an observation, a person, a recipe, a contract — whatever you want Coggo to remember. Every entity has:
-
-- A **type** (`Project`, `Decision`, `Goal`, etc. — see seed types below)
-- A set of **fields** defined by the type (a `Decision` has `title`, `rationale`, `alternatives`, `confidence`, ...)
-- A **peer** it belongs to
-- **Provenance** — who created it, with which client, when
-
-Entities are mutable but never deleted. Updates produce new events on the log; archival sets a flag rather than dropping the row. You can ask "what did this look like a month ago" and get a real answer (`coggo_time_travel`).
-
-### Relationship
-
-**A relationship connects two entities.** A `Decision` *supersedes* an earlier `Decision`. A `Project` *depends_on* another `Project`. An `Observation` *affects* a `Goal`. Three seed relationship types ship: `depends_on`, `supersedes`, `affects`. Add your own with `coggo type add --relationship`.
-
-### Event
-
-**An event is what actually happened.** Every state change — entity created, entity updated, type defined, setting changed — is an immutable, ordered event in a per-peer log. The event log is the source of truth. Entities and relationships are *projections* of the event log; they can be rebuilt from it.
-
-The event vocabulary is closed and stable (`EntityCreated`, `EntityUpdated`, `EntityArchived`, `RelationCreated`, `RelationDissolved`, `EntityTypeDefined`, `EntityTypeUpdated`, `RelationshipTypeDefined`, `RelationshipTypeUpdated`, `SettingChanged`). The entity types it carries are open — you define them.
-
-### Type
-
-**A type is a schema for entities.** Types are themselves data — defined as `EntityTypeDefinition` entities living in the peer where they apply. v0.1 ships seed types per peer (`Project`, `Domain`, `Decision`, `Goal`, `Observation`, `Setting`); you extend the vocabulary at runtime via `coggo type add` (CLI) or `coggo_type_define` (MCP). v0.1 validation is loose: required fields are enforced, type mismatches and unknown fields are accepted with a warning. Strict validation arrives in v0.7.
-
-For a full reference of the seed schema and how to define your own, see [docs/SCHEMA.md](docs/SCHEMA.md).
-
-## Status
-
-v0.1 development. Single user, single machine. Apache 2.0 licensed.
-
-## Install and first run
-
-```bash
-git clone https://github.com/lunguini/coggo.git
-cd coggo
-make install        # installs `coggo` to $GOPATH/bin
-coggo init          # interactive setup: peers, settings, Tailscale check
-coggo today         # structured daily briefing
-make dev            # build + serve MCP locally on :6177
+  Entities --> Future[Later: reasoning, signing, federation, dispatch]
 ```
 
-For remote access (claude.ai mobile, etc.) on a custom domain, use Cloudflare Tunnel:
+## Try It Locally In 5 Minutes
 
 ```bash
-make serve-public   # build coggo + OAuth gateway; expose with cloudflared
+go install github.com/lunguini/coggo/cmd/coggo@v0.1.0
+coggo init
+coggo token create --peer business --label codex-local
+export COGGO_TOKEN='paste-token-here'
+coggo serve
 ```
 
-`make help` lists all targets. The phone deployment uses `cloudflared` and a named Cloudflare Tunnel — see [docs/cloudflare-tunnel.md](docs/cloudflare-tunnel.md).
+Use a version tag such as `@v0.1.0` for a specific stable release. Use `@latest` for the newest tagged release. Use `@main` only if you explicitly want the current development branch.
 
-## Day-to-day commands
+After the first public release, macOS users can also install the release binary from the Homebrew tap:
 
 ```bash
-coggo today                      # daily briefing across all peers
-coggo today --peer business      # one peer
+brew install --cask lunguini/tap/coggo
+```
 
-coggo decision new               # interactive: log a Decision (defaults to business peer)
-coggo goal new                   # ditto, defaults to personal peer
-coggo observation new            # ditto, defaults to personal peer
+If you are developing Coggo itself, clone the repo and use `make install` for the version stamp and `PATH` warning.
 
-coggo entity new <Type> --peer <name>    # any type, any peer
+Coggo serves MCP at:
+
+```text
+http://localhost:6177/mcp
+```
+
+Connect Codex:
+
+```bash
+codex mcp add coggo-local \
+  --url http://localhost:6177/mcp \
+  --bearer-token-env-var COGGO_TOKEN
+```
+
+Connect Claude Code by adding Coggo to Claude Code's MCP config; see [docs/claude-code-setup.md](docs/claude-code-setup.md). Some Claude Code versions also support a CLI-based `claude mcp add` flow; the docs show the JSON config path because it is explicit and easy to inspect.
+
+Smoke-test the connection from your AI client by asking it to call:
+
+```text
+coggo_type_list(peer="coggo")
+```
+
+On a fresh install, the response should include seed types such as `Project`, `Decision`, `Goal`, `Observation`, and `Setting`.
+
+A future setup helper may detect local Claude Code and Codex config paths and print or apply MCP setup automatically. That helper is intentionally not part of this README rewrite; the current setup path is manual and inspectable.
+
+## Why Peers Matter
+
+Peers are Coggo's authorization boundaries. A token can be scoped to one peer, several peers, or all peers. If a client has a `business` token, it cannot read `personal` data just because the user asks for it.
+
+```mermaid
+flowchart TB
+  TokenA[business token] --> Business[business peer]
+  TokenB[personal token] --> Personal[personal peer]
+  TokenC[coggo token] --> Self[coggo peer]
+
+  Business --> BusinessData[Projects, code decisions, clients]
+  Personal --> PersonalData[Health, finance, family, music]
+  Self --> SelfData[Coggo settings, directives, Coggo decisions]
+
+  TokenA -. denied .-> Personal
+  TokenA -. denied .-> Self
+```
+
+The default `coggo init` creates:
+
+- `personal` for private life domains.
+- `business` for work, code, clients, and project decisions.
+- `coggo` for Coggo's own configuration and decision history.
+
+## Core Concepts
+
+- **Peer:** A unit of identity, ownership, and authorization. Peers are the boundary around data.
+- **Entity:** A thing Coggo remembers, such as a `Project`, `Decision`, `Goal`, or `Observation`.
+- **Relationship:** A typed edge between entities, such as `depends_on`, `supersedes`, or `affects`.
+- **Event:** An immutable record of a state change. Entities and relationships are projections of events.
+- **Type:** A schema defined as data. AI clients should call `coggo_type_list` before creating entities.
+
+For the full schema, see [docs/SCHEMA.md](docs/SCHEMA.md). For MCP tools, see [docs/api.md](docs/api.md).
+
+## Common Commands
+
+```bash
+coggo today                         # daily briefing across peers
+coggo today --peer business         # daily briefing for one peer
+
+coggo decision new                  # log a Decision
+coggo goal new                      # log a Goal
+coggo observation new               # log an Observation
+
+coggo entity new <Type> --peer <name>
 coggo entity list <Type> --peer <name>
 coggo entity show <id> --peer <name>
 
-coggo type list --peer <name>    # see what types exist
-coggo type add                   # interactive: define a new type
+coggo type list --peer <name>
+coggo type add
 
-coggo peer add <name>            # add a new peer
-coggo peer list                  # show all peers
+coggo peer list
+coggo peer add <name>
 
-coggo token create --all                 # one token for everything
-coggo token create --peer business       # peer-scoped
-coggo token create --peer business --peer personal  # multiple peers
-
-coggo backup identity export ~/coggo-peers.json  # export hosted peer private keys
-coggo backup identity import ~/coggo-peers.json  # restore hosted peer private keys
+coggo token create --peer business
+coggo token create --peer business --peer personal
+coggo token create --all
 ```
 
-## Wiring AI clients
+## Local AI Client Setup
 
-**Claude Code (local):**
+### Codex
 
 ```bash
-coggo token create --all --label claude-code-local
-coggo serve &
-claude mcp add --transport http coggo http://localhost:6177/mcp \
-  --header "Authorization: Bearer <secret>"
+coggo token create --peer business --label codex-local
+export COGGO_TOKEN='paste-token-here'
+coggo serve
+codex mcp add coggo-local \
+  --url http://localhost:6177/mcp \
+  --bearer-token-env-var COGGO_TOKEN
 ```
 
-Drop [templates/CLAUDE.md.template](templates/CLAUDE.md.template) into your repo's `CLAUDE.md` so Claude Code knows when to query Coggo proactively.
+See [docs/codex-setup.md](docs/codex-setup.md) for a longer walkthrough, smoke tests, and troubleshooting.
 
-**claude.ai (remote):** see [docs/claude-ai-setup.md](docs/claude-ai-setup.md). The Termux phone path uses Cloudflare Tunnel plus the OAuth gateway.
+### Claude Code
+
+```bash
+coggo token create --peer business --label claude-code
+coggo serve
+```
+
+Then add Coggo to Claude Code's MCP config and install the repo prompt template. See [docs/claude-code-setup.md](docs/claude-code-setup.md).
+
+### claude.ai
+
+claude.ai custom connectors require OAuth 2.1, not a static bearer token. Use the OAuth gateway plus Cloudflare Tunnel path in [docs/claude-ai-setup.md](docs/claude-ai-setup.md). Other MCP clients that can send bearer tokens may connect directly to Coggo over a local or remote URL.
+
+### Remote Bearer-Token MCP
+
+Coggo does not have to run on the same machine as the MCP client. If the client can send an `Authorization: Bearer ...` header, it can connect directly to any HTTPS endpoint that reaches `coggo serve`:
+
+```bash
+coggo token create --peer business --label codex-remote
+export COGGO_TOKEN='paste-token-here'
+codex mcp add coggo-remote \
+  --url https://coggo.example.com/mcp \
+  --bearer-token-env-var COGGO_TOKEN
+```
+
+Use direct remote MCP for trusted clients and private transports where bearer-token auth is acceptable. Use `coggo-oauth-gateway` for public browser/mobile/OAuth-only clients, email allowlists, and gateway rate limiting.
+
+## Roadmap
+
+- [x] **v0.1 substrate:** storage, peers, MCP, open types, daily briefing.
+- [ ] **v0.2 reasoning loop:** bring-your-own LLM, context selection, validated write-back.
+- [ ] **v0.3 cryptographic identity:** signed events and verifiable provenance.
+- [ ] **v0.4 network federation:** Coggo-to-Coggo transport across machines.
+- [ ] **v0.5 agent dispatch:** send work to Claude Code, Codex, and other tools.
+- [ ] **v0.6 autonomy:** proactive engagement within explicit directives.
+- [ ] **v0.7 BCPC enforcement:** boundaries, consent, provenance, and continuity as enforceable contracts.
+- [ ] **v0.8 inter-user federation:** negotiated cross-user Coggo interactions.
+- [ ] **v0.9 self-improvement:** proposals and implementation loops for Coggo itself.
+- [ ] **v1.0 public stability:** stable docs, migrations, governance, and adoptability.
+
+The version numbers are planning anchors, not promises. The trunk is v0.1 substrate and v0.2 reasoning; later branches may change as real usage shapes the system.
 
 ## Documentation
 
-- [SCHEMA.md](docs/SCHEMA.md) — entity types, relationship types, event vocabulary
-- [api.md](docs/api.md) — MCP tool reference (the 12 tools v0.1 exposes)
-- [claude-ai-setup.md](docs/claude-ai-setup.md) — wiring claude.ai web and mobile
-- [claude-code-setup.md](docs/claude-code-setup.md) — wiring Claude Code
-- [cloudflare-tunnel.md](docs/cloudflare-tunnel.md) — exposing Coggo on a custom domain via Cloudflare Tunnel
-- [tailscale-setup.md](docs/tailscale-setup.md) — legacy Tailscale + Funnel notes for non-Termux hosts
-- [backup.md](docs/backup.md) — DB replication to Cloudflare R2 plus identity backup
-- [skills/coggo/SKILL.md](skills/coggo/SKILL.md) — the Coggo skill for AI clients
-- [templates/CLAUDE.md.template](templates/CLAUDE.md.template) — drop-in CLAUDE.md for Claude Code repos
+- [docs/SCHEMA.md](docs/SCHEMA.md) — entity types, relationship types, and event vocabulary.
+- [docs/api.md](docs/api.md) — MCP tool reference.
+- [docs/codex-setup.md](docs/codex-setup.md) — wiring Codex to local Coggo.
+- [docs/claude-code-setup.md](docs/claude-code-setup.md) — wiring Claude Code to local Coggo.
+- [docs/claude-ai-setup.md](docs/claude-ai-setup.md) — wiring claude.ai through OAuth and Cloudflare Tunnel.
+- [docs/remote-bearer-mcp.md](docs/remote-bearer-mcp.md) — direct remote MCP for bearer-token clients.
+- [docs/cloudflare-tunnel.md](docs/cloudflare-tunnel.md) — supported public exposure path for Termux and OAuth-only clients.
+- [docs/backup.md](docs/backup.md) — SQLite/Litestream backup plus peer identity export/import.
+- [docs/tailscale-setup.md](docs/tailscale-setup.md) — legacy bearer-token public access notes.
+- [SECURITY.md](SECURITY.md) — security posture and vulnerability reporting.
+- [CONTRIBUTING.md](CONTRIBUTING.md) — development setup and contribution checks.
+
+## Security Notes
+
+Raw `coggo serve` uses bearer-token authentication and stays localhost-bound by default. It can be exposed to trusted MCP clients that support bearer tokens, but public browser, mobile, or OAuth-only access should go through `coggo-oauth-gateway` and Cloudflare Tunnel.
+
+`peers.json` contains hosted peer private keys. It is deliberately outside Litestream database backup; export and store it separately with `coggo backup identity export`.
 
 ## License
 
