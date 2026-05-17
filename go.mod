@@ -3,7 +3,7 @@ module github.com/lunguini/coggo
 go 1.26.1
 
 require (
-	github.com/asg017/sqlite-vec-go-bindings v0.1.6
+	github.com/asg017/sqlite-vec-go-bindings v0.1.7-alpha.2
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/pelletier/go-toml/v2 v2.3.0
 	github.com/tetratelabs/wazero v1.8.2

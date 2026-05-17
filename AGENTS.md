@@ -70,7 +70,7 @@ OAuth-only clients. Tailscale Funnel docs are legacy/bearer-token-client notes.
 
 Releases follow the Gocker-style tag flow, not semantic-release:
 
-- Push only the intended release tag, for example `git push origin v0.1.1`.
+- Push only the intended release tag, for example `git push origin v0.1.2`.
 - GitHub Actions runs release readiness checks on `v*` tags.
 - GoReleaser builds release archives, attaches checksums to the GitHub release,
   and updates `lunguini/homebrew-tap`.
@@ -80,7 +80,7 @@ Releases follow the Gocker-style tag flow, not semantic-release:
   and committed back to `main` by the release workflow.
 
 For public install docs, prefer stable tagged installs such as
-`go install github.com/lunguini/coggo/cmd/coggo@v0.1.1`; use `@latest` for the
+`go install github.com/lunguini/coggo/cmd/coggo@v0.1.2`; use `@latest` for the
 newest tagged release and `@main` only for development builds. Homebrew install
 uses `brew install --cask lunguini/tap/coggo`.
 
