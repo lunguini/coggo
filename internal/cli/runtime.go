@@ -245,9 +245,9 @@ func FedCall(ctx context.Context, rt *Runtime, peerDID, msgType, op string, args
 // CreateEntity is a convenience wrapper around the entity.create op.
 func CreateEntity(ctx context.Context, rt *Runtime, peerDID, typ string, fields map[string]any, clientID string) (*types.Entity, error) {
 	resp, err := FedCall(ctx, rt, peerDID, "write", "entity.create", map[string]any{
-		"type":      typ,
-		"fields":    fields,
-		"client_id": clientID,
+		"type":       typ,
+		"fields":     fields,
+		"client_id":  clientID,
 		"author_did": peerDID,
 	})
 	if err != nil {

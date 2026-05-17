@@ -25,15 +25,15 @@ import (
 // registry, auth store, federation router, and the MCP server itself, all
 // rooted in t.TempDir() and bound to a random localhost port.
 type testHarness struct {
-	t           *testing.T
-	srv         *Server
-	url         string
-	tokenA      string
-	tokenAOnly  string
-	peerA       *types.Peer
-	peerB       *types.Peer
-	cancel      context.CancelFunc
-	doneCh      chan struct{}
+	t          *testing.T
+	srv        *Server
+	url        string
+	tokenA     string
+	tokenAOnly string
+	peerA      *types.Peer
+	peerB      *types.Peer
+	cancel     context.CancelFunc
+	doneCh     chan struct{}
 }
 
 func newTestHarness(t *testing.T) *testHarness {

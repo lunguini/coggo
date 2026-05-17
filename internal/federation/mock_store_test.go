@@ -28,8 +28,8 @@ func newMockStore() *mockStore {
 
 func key(peer, id string) string { return peer + "|" + id }
 
-func (m *mockStore) Init(ctx context.Context) error  { return nil }
-func (m *mockStore) Close() error                    { return nil }
+func (m *mockStore) Init(ctx context.Context) error { return nil }
+func (m *mockStore) Close() error                   { return nil }
 
 func (m *mockStore) AppendEvent(ctx context.Context, ev *types.Event) error {
 	m.mu.Lock()

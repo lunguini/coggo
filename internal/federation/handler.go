@@ -434,9 +434,9 @@ func (h *StoreHandler) opTypeDefine(ctx context.Context, msg types.FederationMes
 	// type "EntityTypeDefinition" / "RelationshipTypeDefinition", and also
 	// registered into the in-memory resolver for fast lookup.
 	var (
-		evType   types.EventType
-		entType  string
-		stored   any
+		evType  types.EventType
+		entType string
+		stored  any
 	)
 	if a.IsRelationship {
 		def := &types.RelationshipTypeDefinition{

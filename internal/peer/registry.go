@@ -18,9 +18,9 @@ import (
 // Per-peer state (events, entities) lives in the Store, not here. The Registry
 // is the directory of identities and their settings only.
 type Registry struct {
-	path  string
-	mu    sync.RWMutex
-	byDID map[string]*types.Peer
+	path   string
+	mu     sync.RWMutex
+	byDID  map[string]*types.Peer
 	byName map[string]*types.Peer
 }
 

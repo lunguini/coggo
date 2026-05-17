@@ -65,7 +65,7 @@ func (m *mockStore) QueryEntities(ctx context.Context, peerDID string, q types.E
 	}
 	return out, nil
 }
-func (m *mockStore) UpsertRelation(context.Context, *types.Relation) error { return nil }
+func (m *mockStore) UpsertRelation(context.Context, *types.Relation) error  { return nil }
 func (m *mockStore) DissolveRelation(context.Context, string, string) error { return nil }
 func (m *mockStore) QueryRelations(context.Context, string, string, string, string, int) ([]*types.Relation, error) {
 	return nil, nil

@@ -15,16 +15,16 @@ import (
 type EventType string
 
 const (
-	EventEntityCreated            EventType = "EntityCreated"
-	EventEntityUpdated            EventType = "EntityUpdated"
-	EventEntityArchived           EventType = "EntityArchived"
-	EventRelationCreated          EventType = "RelationCreated"
-	EventRelationDissolved        EventType = "RelationDissolved"
-	EventEntityTypeDefined        EventType = "EntityTypeDefined"
-	EventEntityTypeUpdated        EventType = "EntityTypeUpdated"
-	EventRelationshipTypeDefined  EventType = "RelationshipTypeDefined"
-	EventRelationshipTypeUpdated  EventType = "RelationshipTypeUpdated"
-	EventSettingChanged           EventType = "SettingChanged"
+	EventEntityCreated           EventType = "EntityCreated"
+	EventEntityUpdated           EventType = "EntityUpdated"
+	EventEntityArchived          EventType = "EntityArchived"
+	EventRelationCreated         EventType = "RelationCreated"
+	EventRelationDissolved       EventType = "RelationDissolved"
+	EventEntityTypeDefined       EventType = "EntityTypeDefined"
+	EventEntityTypeUpdated       EventType = "EntityTypeUpdated"
+	EventRelationshipTypeDefined EventType = "RelationshipTypeDefined"
+	EventRelationshipTypeUpdated EventType = "RelationshipTypeUpdated"
+	EventSettingChanged          EventType = "SettingChanged"
 )
 
 // Event is the source-of-truth record. Append-only.
