@@ -37,14 +37,14 @@ flowchart LR
 ## Try It Locally In 5 Minutes
 
 ```bash
-go install github.com/lunguini/coggo/cmd/coggo@v0.1.0
+go install github.com/lunguini/coggo/cmd/coggo@v0.1.1
 coggo init
 coggo token create --peer business --label codex-local
 export COGGO_TOKEN='paste-token-here'
 coggo serve
 ```
 
-Use a version tag such as `@v0.1.0` for a specific stable release. Use `@latest` for the newest tagged release. Use `@main` only if you explicitly want the current development branch.
+Use a version tag such as `@v0.1.1` for a specific stable release. Use `@latest` for the newest tagged release. Use `@main` only if you explicitly want the current development branch.
 
 After the first public release, macOS users can also install the release binary from the Homebrew tap:
 
