@@ -88,19 +88,27 @@ https://coggo.example.com/oauth/callback
 
 ```bash
 ~/.termux/boot/30-coggo
-tail -f ~/.coggo/logs/cloudflared.log
+tail -f "$PREFIX/var/log/sv/coggo-cloudflared/current"
 ```
 
 You should see `Registered tunnel connection` lines. Visit `https://coggo.example.com/healthz` (or whatever you have wired up) to confirm.
 
 ## Operations
 
-**Logs**: `~/.coggo/logs/cloudflared.log`.
+**Logs**:
+```bash
+tail -f "$PREFIX/var/log/sv/coggo-cloudflared/current"
+tail -f "$PREFIX/var/log/sv/coggo-gateway/current"
+```
 
 **Restart cloudflared only**:
 ```bash
-kill "$(cat ~/.coggo/run/cloudflared.pid)"
-~/.termux/boot/30-coggo
+sv restart coggo-cloudflared
+```
+
+**Restart the OAuth gateway only**:
+```bash
+sv restart coggo-gateway
 ```
 
 **Migrating the tunnel to another machine**: copy `~/.cloudflared/cert.pem` and `~/.cloudflared/<uuid>.json` to the new host, then run `cloudflared tunnel run coggo` there. Don't run the same tunnel from two machines simultaneously — Cloudflare load-balances across them, which will confuse the gateway's OAuth state.

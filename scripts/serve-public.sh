@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Run coggo + coggo-oauth-gateway + Tailscale Funnel together. Funnel exposes
-# the gateway (which speaks OAuth) so claude.ai can reach it. Coggo proper
-# stays on localhost behind the gateway.
+# Run coggo + coggo-oauth-gateway + a public tunnel together. Cloudflare Tunnel
+# is used when CLOUDFLARE_TUNNEL_NAME is set; otherwise this falls back to
+# legacy Tailscale Funnel. The tunnel exposes the OAuth gateway, while Coggo
+# proper stays on localhost behind it.
 #
-# Cleanup on Ctrl-C: stop both processes, reset funnel.
+# Cleanup on Ctrl-C: stop local processes and the public tunnel.
 #
 # bash 3.2 compatible (macOS default) — no `wait -n`, no associative arrays.
 
@@ -89,7 +90,7 @@ cleanup() {
         wait "$CLOUDFLARED_PID" 2>/dev/null || true
     fi
     if [ "$USE_CLOUDFLARED" -eq 0 ]; then
-        echo "resetting funnel..."
+        echo "resetting legacy Tailscale funnel..."
         tailscale funnel reset 2>/dev/null || true
     fi
     echo "logs preserved at: $LOG_DIR"
@@ -186,7 +187,7 @@ echo
 echo "all up. claude.ai connector URL:"
 echo "  $PUBLIC_URL/mcp"
 echo
-echo "watching coggo + gateway. Ctrl-C to stop both and reset funnel."
+echo "watching coggo + gateway. Ctrl-C to stop local processes and the public tunnel."
 
 # Poll instead of `wait -n` (bash 3.2 compatible).
 while kill -0 "$COGGO_PID" 2>/dev/null && kill -0 "$GATEWAY_PID" 2>/dev/null \

@@ -151,14 +151,33 @@ coggo entity list Project --peer business
 
 You should see "Test from claude.ai" in the output. End-to-end working.
 
+For a low-risk connector smoke test, call `coggo_type_list` against a peer you know exists, such as `coggo` on a freshly initialized install. If the tool returns seeded types like `Decision`, `Goal`, `Project`, and `Observation`, the public OAuth gateway is reaching Coggo successfully. An error like `unknown peer "note20"` still proves the request reached Coggo; it only means that peer name is not present in the running instance's peer registry.
+
 ## Troubleshooting
 
 **`make serve-public` fails with "missing required env".**
 Set `COGGO_TOKEN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` before running. The error message echoes the exact `export` commands you need.
 
 **claude.ai says it cannot connect to the connector.**
-1. From your laptop, test the connector URL: `curl -i https://coggo.example.com/mcp`. Expected response: `HTTP 401` with a `WWW-Authenticate` header pointing at `/.well-known/oauth-protected-resource`. If you get a connection error, check `~/.coggo/logs/cloudflared.log` and `~/.coggo/logs/gateway.log`.
+1. From your laptop, test the connector URL: `curl -i https://coggo.example.com/mcp`. Expected response: `HTTP 401` with a `WWW-Authenticate` header pointing at `/.well-known/oauth-protected-resource`. If you get a connection error on Termux, check `$PREFIX/var/log/sv/coggo-cloudflared/current` and `$PREFIX/var/log/sv/coggo-gateway/current`.
 2. Check the connector URL has `/mcp` on the end in the connector config.
+
+**Codex/Claude says `Auth required` after a restart or update.**
+This is the client-to-gateway OAuth layer, not Coggo's `COGGO_TOKEN`. Re-run the connector OAuth login. The gateway uses `OAUTH_STATE_SECRET` to keep OAuth proxy state stable across restarts; Termux deploy generates it in `~/.coggo/env`. If this keeps happening after every restart, confirm the env file has exactly one non-empty `OAUTH_STATE_SECRET` and restart `coggo-gateway`.
+
+**How to tell which auth layer failed.**
+- `Auth required` from the MCP client: the client has no valid OAuth bearer for the public gateway yet.
+- Gateway log says token validation failed: Google OAuth validation or `OAUTH_ALLOWED_EMAILS` rejected the caller.
+- Tool call returns `unauthorized: auth: unauthorized: unknown token`: OAuth succeeded and the gateway proxied to Coggo, but the gateway's `COGGO_TOKEN` does not match Coggo's `tokens.json`.
+- Tool call returns `unknown peer "<name>"`: auth and transport worked; the requested peer name does not exist in the running Coggo peer registry.
+
+Useful Termux checks:
+```
+sv status coggo coggo-gateway coggo-cloudflared
+tail -80 "$PREFIX/var/log/sv/coggo-gateway/current"
+tail -80 "$PREFIX/var/log/sv/coggo-cloudflared/current"
+pgrep -af 'coggo|coggo-oauth-gateway|cloudflared|litestream'
+```
 
 **Google sign-in says "redirect_uri_mismatch".**
 The Cloudflare Tunnel URL in step 5 doesn't exactly match what's registered in Google (step 6). Common gotchas: trailing slash, missing `/oauth/callback`, http vs https. Update the Google client credentials and try again.

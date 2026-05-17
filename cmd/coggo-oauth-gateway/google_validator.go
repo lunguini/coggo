@@ -124,8 +124,7 @@ func (v *googleValidator) Validate(ctx context.Context, token string) (*cachedUs
 	}
 	// Fail-closed: if no emails are allowlisted, deny everything. This is the
 	// safety net when OAUTH_ALLOWED_EMAILS is unset — without it, a valid
-	// Google token from *any* account would be accepted, since Funnel exposes
-	// the gateway publicly.
+	// Google token from *any* account would be accepted on the public gateway.
 	if len(v.allowedEmails) == 0 {
 		return nil, info.Email, fmt.Errorf("no allowed emails configured (set OAUTH_ALLOWED_EMAILS)")
 	}

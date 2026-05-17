@@ -3,7 +3,7 @@
 
 # Port Coggo binds (must match server.listen_address in config.toml)
 COGGO_PORT ?= 6177
-# Port the OAuth gateway binds (Funnel exposes this for claude.ai)
+# Port the OAuth gateway binds (Cloudflare Tunnel exposes this for claude.ai)
 GATEWAY_PORT ?= 8080
 
 # Version stamp: git describe if available, else "dev"
@@ -25,8 +25,8 @@ help:
 	@echo "  install-all        install both binaries"
 	@echo "  run                run from source (e.g. make run ARGS='today')"
 	@echo "  dev                build + serve locally (foreground, Ctrl-C to stop)"
-	@echo "  serve              build + serve + expose via Tailscale Funnel (bearer-token auth)"
-	@echo "  serve-public       build coggo + gateway, serve both, Funnel exposes gateway (OAuth)"
+	@echo "  serve              build + serve locally via legacy Tailscale Funnel (bearer-token auth)"
+	@echo "  serve-public       build coggo + gateway, serve both, expose gateway publicly (OAuth)"
 	@echo "  test               run all tests"
 	@echo "  test-verbose       run all tests with -v"
 	@echo "  fmt                gofmt the tree"
@@ -60,8 +60,9 @@ run:
 dev: build
 	./coggo serve
 
-# `make serve` exposes the local Coggo via Tailscale Funnel so claude.ai
-# (or any public MCP client) can reach it. Funnel is reset on Ctrl-C.
+# `make serve` exposes raw Coggo via Tailscale Funnel for bearer-token clients.
+# claude.ai custom connectors require OAuth, so use `make serve-public` there.
+# Funnel is reset on Ctrl-C.
 # Requires: tailscale installed + logged in, Funnel enabled in your tailnet ACLs.
 # Logic is in scripts/serve-with-funnel.sh so signals route cleanly when
 # invoked through make.
@@ -74,8 +75,8 @@ serve: build
 	@./scripts/serve-with-funnel.sh $(COGGO_PORT)
 
 # `make serve-public` is the claude.ai path: runs coggo on localhost, runs
-# coggo-oauth-gateway on $(GATEWAY_PORT), exposes the gateway via Tailscale
-# Funnel, and shuts everything down cleanly on Ctrl-C.
+# coggo-oauth-gateway on $(GATEWAY_PORT), exposes the gateway via Cloudflare
+# Tunnel when CLOUDFLARE_TUNNEL_NAME is set, and shuts down cleanly on Ctrl-C.
 #
 # Required env (the script will fail with clear messages if any are missing):
 #   COGGO_TOKEN              from `coggo token create --all`

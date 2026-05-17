@@ -6,7 +6,7 @@
 // This keeps Coggo's substrate sovereign — coggo never speaks OAuth, never
 // trusts a third party for identity. The gateway is a swappable transport:
 // Adrian can run coggo without it (Claude Code, curl, local), or in front of
-// it (claude.ai mobile via Tailscale Funnel).
+// it (claude.ai mobile via Cloudflare Tunnel).
 //
 // Architecture:
 //
@@ -70,8 +70,8 @@ Optional:
                            additional MCP clients.
   OAUTH_ALLOWED_EMAILS     Comma-separated allowlist of Google account
                            emails permitted to call /mcp. FAIL-CLOSED: if
-                           unset or empty, every request is rejected. Funnel
-                           is a public surface — without this, any Google
+                           unset or empty, every request is rejected. The
+                           gateway is a public surface — without this, any Google
                            account on the internet could authenticate.
   OAUTH_STATE_SECRET       Stable secret used to sign OAuth proxy state.
                            Keep this persistent across gateway restarts.
@@ -229,9 +229,9 @@ func run(cfg *config) error {
 	defer perEmail.Close()
 	mux.Handle("/mcp", validator.WrapHandler(perEmail.Wrap(proxy), oauthServer))
 
-	// Global token-bucket fronts every gateway endpoint. With Tailscale Funnel
-	// all public traffic shares one source IP (the relay), so per-IP limiting
-	// is meaningless on the public surface — a global cap is the right shape.
+	// Global token-bucket fronts every gateway endpoint. Public tunnel traffic
+	// can collapse many clients onto a small set of relay IPs, so per-IP
+	// limiting is less useful than a global cap here.
 	globalLim := rate.NewLimiter(rate.Limit(cfg.GlobalRPS), cfg.GlobalBurst)
 	slog.Info("rate limits configured",
 		"global_rps", cfg.GlobalRPS, "global_burst", cfg.GlobalBurst,

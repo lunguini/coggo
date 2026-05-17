@@ -1,8 +1,10 @@
 # Tailscale setup for Coggo
 
-Coggo binds to `localhost:6177` and does not expose itself to the public internet on its own. To make Coggo reachable by claude.ai (so the mobile app and web can use Coggo as a Custom Connector), you use Tailscale and Tailscale Funnel: Tailscale puts Coggo on your tailnet, and Funnel exposes that tailnet endpoint over public TLS, gated by Tailscale's auth.
+This is a legacy path for clients that can send Coggo bearer tokens directly. The supported public path for claude.ai custom connectors is Cloudflare Tunnel plus `coggo-oauth-gateway`; see [cloudflare-tunnel.md](cloudflare-tunnel.md) and [claude-ai-setup.md](claude-ai-setup.md).
 
-This is the path for v0.1. Cloudflare Tunnel and other exposure patterns work, but Tailscale Funnel is what the setup flow assumes.
+Coggo binds to `localhost:6177` and does not expose itself to the public internet on its own. To make raw Coggo reachable by bearer-token MCP clients, you can use Tailscale and Tailscale Funnel: Tailscale puts Coggo on your tailnet, and Funnel publishes that tailnet endpoint over public TLS, gated by Tailscale's auth.
+
+Do not expose raw `coggo serve` to OAuth-only clients. They need the OAuth gateway.
 
 ## 1. Install Tailscale
 
@@ -88,7 +90,7 @@ curl -H "Authorization: Bearer <your-coggo-token>" \
 
 ## 6. Wire claude.ai
 
-See [claude-ai-setup.md](claude-ai-setup.md) for the Custom Connector configuration that points claude.ai at the Funnel URL.
+OAuth-only clients such as claude.ai custom connectors should use the Cloudflare Tunnel + OAuth gateway path in [claude-ai-setup.md](claude-ai-setup.md), not this raw bearer-token path.
 
 ## Troubleshooting
 
@@ -108,4 +110,4 @@ The Funnel URL is your machine's MagicDNS name plus `.ts.net`. If you renamed th
 By default Tailscale ACLs allow Funnel. If you have customized your ACL JSON, ensure your machine is in the `funnel` node attribute or that an ACL rule explicitly permits Funnel for it. See <https://tailscale.com/kb/1223/funnel> for the current syntax.
 
 **Phone shows "not secure" or refuses to load.**
-Funnel terminates TLS using a Tailscale-managed certificate. If you bypassed certificate validation in `curl` testing, claude.ai will not bypass it; the cert must validate cleanly. Check that `tailscale funnel status` reports the Funnel as on, and that the URL hostname matches the certificate (it should, because Tailscale issues the cert for the MagicDNS hostname).
+Funnel terminates TLS using a Tailscale-managed certificate. If you bypassed certificate validation in `curl` testing, normal MCP clients will not bypass it; the cert must validate cleanly. Check that `tailscale funnel status` reports the Funnel as on, and that the URL hostname matches the certificate (it should, because Tailscale issues the cert for the MagicDNS hostname).

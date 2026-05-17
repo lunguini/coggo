@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 
 	cli "github.com/urfave/cli/v3"
 
@@ -113,14 +112,11 @@ func actionInit(ctx context.Context, cmd *cli.Command) error {
 		})
 	}
 
-	// Step 6: tailscale check.
+	// Step 6: exposure guidance.
 	fmt.Println("")
-	if _, err := exec.LookPath("tailscale"); err == nil {
-		fmt.Println("Detected Tailscale. To expose Coggo via Funnel, run:")
-		fmt.Println("  tailscale funnel 6177")
-	} else {
-		fmt.Println("Tailscale not detected. See docs/tailscale-setup.md for setup instructions.")
-	}
+	fmt.Println("Coggo is local-only by default. For public remote access, put")
+	fmt.Println("the OAuth gateway behind Cloudflare Tunnel:")
+	fmt.Println("  see docs/cloudflare-tunnel.md and docs/claude-ai-setup.md")
 
 	// Save config to disk if missing.
 	cfgPath := configPath(cmd)

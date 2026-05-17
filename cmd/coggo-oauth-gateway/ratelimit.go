@@ -3,10 +3,10 @@ package main
 // ratelimit.go provides two layers of throttling for the gateway:
 //
 //   1. globalLimiter — a single token-bucket across every request the gateway
-//      handles. Tailscale Funnel collapses all public clients onto the same
-//      relay address, so per-IP limiting on the public surface is meaningless;
-//      a global cap is the correct shape of defense against floods of OAuth
-//      or tokeninfo traffic.
+//      handles. Public tunnel traffic can collapse many clients onto a small
+//      set of relay addresses, so per-IP limiting on the public surface is
+//      less useful than a global cap against floods of OAuth or tokeninfo
+//      traffic.
 //
 //   2. perEmailLimiter — applied after token validation on /mcp. Each
 //      authenticated email gets its own bucket so one noisy account can't

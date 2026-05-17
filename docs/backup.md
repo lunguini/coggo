@@ -125,7 +125,7 @@ litestream restore -config ~/coggo/scripts/litestream.yml -o "$COGGO_DB_PATH" "$
 
 - **The `peers.json` identity file.** Use `coggo backup identity export` and store the result encrypted. Litestream intentionally does not replicate peer private keys.
 - **The `.env` file itself.** Put the R2 keys, Google OAuth client ID/secret, and `COGGO_TOKEN` in your password manager. They're not derived from the DB and Litestream doesn't replicate them.
-- **The Tailscale state.** Each device has its own tailnet identity — this is by design, not something to back up.
+- **Tunnel/VPN state.** Cloudflare Tunnel credentials live in `~/.cloudflared/`; Tailscale state is per-device if you use the legacy Funnel path. Back up only the credentials you intentionally need to move.
 - **New peers not yet exported.** If you `coggo peer add`, run `coggo backup identity export --force <path>` again. Litestream will capture the peer's DB data, but it will not capture the new private key in `peers.json`.
 
 ## Cost reality check
